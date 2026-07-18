@@ -1,0 +1,77 @@
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/GoogleSansFlex-Variable.ttf") format("truetype-variations");
+  font-style: normal;
+  font-weight: 100 1000;
+  font-stretch: 75% 125%;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F;
+}
+
+@font-face {
+  font-family: "Source Han Sans SC";
+  src: url("../assets/fonts/SourceHanSansSC-VF.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 250 900;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--md-sys-color-on-background);
+  background: var(--md-sys-color-background);
+  font-family: "Google Sans Flex", "Source Han Sans SC", "Segoe UI Variable", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-size: var(--body-font-size);
+  line-height: 1.65;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; }
+img { max-width: 100%; display: block; }
+
+:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
+::selection {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  left: 16px;
+  top: 12px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+button { border: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible { outline-color: Highlight; }
+  .card, .field, .chip { border: 1px solid CanvasText; }
+}
