@@ -22,15 +22,15 @@ function ProtectedRoute() {
 
 function PublicLayout() {
   const { settings } = useSettings();
-  return <>
+  return <div className="site-layout">
     {settings.backgroundImage && <div className="site-background" style={{
       backgroundImage: `url(${settings.backgroundImage})`,
       backgroundPosition: settings.backgroundPosition,
-      filter: `blur(${settings.backgroundBlur}px)`,
+      filter: settings.backgroundBlur > 0 ? `blur(${settings.backgroundBlur}px)` : undefined,
       opacity: 1 - settings.backgroundOverlay,
     }} />}
     <a className="skip-link" href="#main">跳到主要内容</a><SiteHeader /><Outlet /><SiteFooter />
-  </>;
+  </div>;
 }
 
 export function App() {

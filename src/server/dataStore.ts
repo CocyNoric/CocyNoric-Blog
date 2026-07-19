@@ -3,15 +3,24 @@ import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
+import sharp from 'sharp';
 import { galleryInputSchema, galleryItemSchema, migrateSettings, postInputSchema, postMetaSchema, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 
 const defaultSettings: SiteSettings = {
-  version: 5,
+  version: 7,
   siteName: 'CocyNoric‘s Blog',
   homeTitle: 'CocyNoric‘s Blog',
   footerText: 'CocyNoric‘s Blog',
+  galleryDescription: '项目、作品与视觉记录。',
+  footerMode: 'transparent',
+  homeContent: {
+    articleLimit: 4,
+    galleryLimit: 6,
+    articleSurfaceOpacity: 0.94,
+    gallerySurfaceOpacity: 0,
+  },
   description: '记录技术、作品与生活。',
   profileName: 'CocyNoric',
   profileAvatar: null,
@@ -37,6 +46,8 @@ const defaultSettings: SiteSettings = {
       recentPostsLimit: 4,
       showRecentGallery: false,
       recentGalleryLimit: 6,
+      thumbnailColumns: 2,
+      thumbnailRows: 3,
       contentWidth: 820,
     },
     gallery: {
@@ -154,7 +165,7 @@ class DataStore {
     return (await this.listGallery()).find((item) => item.id === id) ?? null;
   }
 
-  async addGalleryItem(input: Pick<GalleryItem, 'url' | 'title' | 'description'> & Partial<Pick<GalleryItem, 'thumbnailFocus'>>) {
+  async addGalleryItem(input: Pick<GalleryItem, 'url' | 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'width' | 'height'>>) {
     const item = galleryItemSchema.parse({ ...input, id: randomUUID(), createdAt: new Date().toISOString() });
     const items = await this.listGallery();
     await this.atomicWrite(this.paths.gallery, `${JSON.stringify([item, ...items], null, 2)}\n`);
@@ -166,7 +177,13 @@ class DataStore {
     const items = await this.listGallery();
     const index = items.findIndex((candidate) => candidate.id === id);
     if (index < 0) return null;
-    const item = galleryItemSchema.parse({ ...items[index], ...input });
+    const current = items[index];
+    const item = galleryItemSchema.parse({ ...current, ...input });
+    if ((input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
+      const metadata = await sharp(path.join(this.paths.media, path.basename(item.url))).metadata();
+      item.width = metadata.width;
+      item.height = metadata.height;
+    }
     items[index] = item;
     await this.atomicWrite(this.paths.gallery, `${JSON.stringify(items, null, 2)}\n`);
     return item;

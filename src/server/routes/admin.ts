@@ -108,9 +108,9 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   let upload: Awaited<ReturnType<typeof receiveImage>> | null = null;
   try {
-    upload = await receiveImage(req, 5);
+    upload = await receiveImage(req, 10);
     const input = galleryUploadInputSchema.parse(upload.fields);
-    res.status(201).json(await dataStore.addGalleryItem({ ...input, url: upload.url }));
+    res.status(201).json(await dataStore.addGalleryItem({ ...input, url: upload.url, width: upload.width, height: upload.height }));
   } catch (error) {
     if (upload) await unlink(upload.filePath).catch(() => undefined);
     next(error);

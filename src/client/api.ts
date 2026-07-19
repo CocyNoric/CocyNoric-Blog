@@ -41,7 +41,7 @@ function writeHeaders(csrfToken: string) {
 
 export const api = {
   settings: () => request<PublicSettings>('/api/settings'),
-  gallery: () => request<GalleryItem[]>('/api/gallery'),
+  gallery: (query = '') => request<GalleryItem[]>(`/api/gallery${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   galleryItem: (id: string) => request<GalleryItem>(`/api/gallery/${encodeURIComponent(id)}`),
   posts: (query = '') => request<PostSummary[]>(`/api/posts${query}`),
   post: (slug: string) => request<PublicPost>(`/api/posts/${encodeURIComponent(slug)}`),
@@ -90,9 +90,14 @@ export const api = {
     body.append('image', file);
     body.append('title', input.title);
     body.append('description', input.description);
+    body.append('cardFocusX', String(input.cardFocus?.x ?? 0.5));
+    body.append('cardFocusY', String(input.cardFocus?.y ?? 0.5));
+    body.append('cardFocusSize', String(input.cardFocus?.size ?? 1));
+    body.append('cardAspectRatio', input.cardAspectRatio ?? 'original');
     body.append('thumbnailFocusX', String(input.thumbnailFocus?.x ?? 0.5));
     body.append('thumbnailFocusY', String(input.thumbnailFocus?.y ?? 0.5));
     body.append('thumbnailFocusSize', String(input.thumbnailFocus?.size ?? 1));
+    body.append('thumbnailAspectRatio', input.thumbnailAspectRatio ?? '1:1');
     return request<GalleryItem>('/api/admin/gallery', {
       method: 'POST',
       headers: writeHeaders(csrfToken),

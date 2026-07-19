@@ -34,6 +34,8 @@ const browsingSchema = z.object({
   article: z.object({
     ...browsingBaseFields,
     contentWidth: z.number().int().min(600).max(1100),
+    thumbnailColumns: z.number().int().min(1).max(5),
+    thumbnailRows: z.number().int().min(1).max(4),
   }),
   gallery: z.object({
     ...browsingBaseFields,
@@ -104,6 +106,20 @@ const settingsV4Schema = z.object({
   }),
 });
 
+const browsingV5Schema = z.object({
+  article: z.object({
+    ...browsingBaseFields,
+    contentWidth: z.number().int().min(600).max(1100),
+  }),
+  gallery: z.object({
+    ...browsingBaseFields,
+    mediaWidth: z.number().int().min(560).max(1100),
+    portraitMaxHeight: z.number().int().min(560).max(1200),
+    thumbnailColumns: z.number().int().min(1).max(5),
+    thumbnailRows: z.number().int().min(1).max(4),
+  }),
+});
+
 const settingsV5Schema = z.object({
   version: z.literal(5),
   ...sharedSettingsFields,
@@ -111,6 +127,38 @@ const settingsV5Schema = z.object({
   profileAvatar: localMediaPath.nullable(),
   webIcon: localMediaPath.nullable(),
   homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  browsing: browsingV5Schema,
+});
+
+const settingsV6Schema = z.object({
+  version: z.literal(6),
+  ...sharedSettingsFields,
+  footerMode: z.enum(['transparent', 'primary']),
+  galleryDescription: z.string().trim().max(240),
+  profileName: z.string().trim().min(1).max(80),
+  profileAvatar: localMediaPath.nullable(),
+  webIcon: localMediaPath.nullable(),
+  homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  browsing: browsingSchema,
+});
+
+const homeContentSchema = z.object({
+  articleLimit: z.number().int().min(1).max(12),
+  galleryLimit: z.number().int().min(1).max(20),
+  articleSurfaceOpacity: z.number().finite().min(0).max(1),
+  gallerySurfaceOpacity: z.number().finite().min(0).max(1),
+});
+
+const settingsV7Schema = z.object({
+  version: z.literal(7),
+  ...sharedSettingsFields,
+  footerMode: z.enum(['transparent', 'primary']),
+  galleryDescription: z.string().trim().max(240),
+  profileName: z.string().trim().min(1).max(80),
+  profileAvatar: localMediaPath.nullable(),
+  webIcon: localMediaPath.nullable(),
+  homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  homeContent: homeContentSchema,
   browsing: browsingSchema,
 });
 
@@ -133,13 +181,45 @@ function upgradeLegacySettings(legacy: z.infer<typeof settingsV2Schema>) {
   });
 }
 
+function upgradeV6Settings(legacy: z.infer<typeof settingsV6Schema>) {
+  return settingsV7Schema.parse({
+    ...legacy,
+    version: 7,
+    homeContent: {
+      articleLimit: 4,
+      galleryLimit: 6,
+      articleSurfaceOpacity: 0.94,
+      gallerySurfaceOpacity: 0,
+    },
+  });
+}
+
+function upgradeV5Settings(legacy: z.infer<typeof settingsV5Schema>) {
+  return upgradeV6Settings(settingsV6Schema.parse({
+    ...legacy,
+    version: 6,
+    footerMode: 'transparent',
+    galleryDescription: '项目、作品与视觉记录。',
+    browsing: {
+      ...legacy.browsing,
+      article: {
+        ...legacy.browsing.article,
+        thumbnailColumns: 2,
+        thumbnailRows: 3,
+      },
+    },
+  }));
+}
+
 function upgradeV4Settings(legacy: z.infer<typeof settingsV4Schema>) {
-  return settingsV5Schema.parse({
+  return upgradeV5Settings(settingsV5Schema.parse({
     ...legacy,
     version: 5,
     browsing: {
       article: {
         ...legacy.browsing.article,
+        thumbnailColumns: 2,
+        thumbnailRows: 3,
         contentWidth: legacy.browsing.article.contentWidth,
       },
       gallery: {
@@ -149,7 +229,7 @@ function upgradeV4Settings(legacy: z.infer<typeof settingsV4Schema>) {
         thumbnailRows: 3,
       },
     },
-  });
+  }));
 }
 
 function upgradeV3Settings(legacy: z.infer<typeof settingsV3Schema>) {
@@ -181,7 +261,9 @@ function upgradeV3Settings(legacy: z.infer<typeof settingsV3Schema>) {
 }
 
 export const settingsSchema = z.union([
-  settingsV5Schema,
+  settingsV7Schema,
+  settingsV6Schema.transform(upgradeV6Settings),
+  settingsV5Schema.transform(upgradeV5Settings),
   settingsV4Schema.transform(upgradeV4Settings),
   settingsV3Schema.transform(upgradeV3Settings),
   settingsV2Schema.transform((legacy) => upgradeV3Settings(upgradeLegacySettings(legacy))),
@@ -217,36 +299,85 @@ export const postInputSchema = z.object({
   version: z.string().optional(),
 });
 
+export const thumbnailAspectRatioSchema = z.enum([
+  'original',
+  '9:16',
+  '16:9',
+  '3:2',
+  '2:3',
+  '1:1',
+  '1:2',
+  '2:1',
+  '3:4',
+  '4:3',
+]);
+
 const thumbnailFocusSchema = z.object({
   x: z.number().finite().min(0).max(1),
   y: z.number().finite().min(0).max(1),
   size: z.number().finite().min(0.1).max(1).default(1),
 });
 
-export const galleryItemSchema = z.object({
+const defaultThumbnailFocus = { x: 0.5, y: 0.5, size: 1 };
+
+const galleryItemBaseSchema = z.object({
   id: z.string().uuid(),
   url: localMediaPath,
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
   createdAt: z.string().datetime(),
-  thumbnailFocus: thumbnailFocusSchema.default({ x: 0.5, y: 0.5, size: 1 }),
+  cardFocus: thumbnailFocusSchema.optional(),
+  cardAspectRatio: thumbnailAspectRatioSchema.optional(),
+  thumbnailFocus: thumbnailFocusSchema.optional(),
+  thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+});
+
+export const galleryItemSchema = galleryItemBaseSchema.transform((item) => {
+  const hasSplitConfiguration = item.cardFocus !== undefined || item.cardAspectRatio !== undefined;
+  const legacyFocus = item.thumbnailFocus ?? defaultThumbnailFocus;
+  const legacyAspectRatio = item.thumbnailAspectRatio ?? '4:3';
+
+  return {
+    ...item,
+    cardFocus: item.cardFocus ?? legacyFocus,
+    cardAspectRatio: item.cardAspectRatio ?? legacyAspectRatio,
+    thumbnailFocus: hasSplitConfiguration
+      ? (item.thumbnailFocus ?? defaultThumbnailFocus)
+      : legacyFocus,
+    thumbnailAspectRatio: hasSplitConfiguration
+      ? (item.thumbnailAspectRatio ?? '1:1')
+      : '1:1',
+  };
 });
 
 export const galleryInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  cardFocus: thumbnailFocusSchema.optional(),
+  cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
+  thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
 });
 
 export const galleryUploadInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  cardFocusX: z.coerce.number().finite().min(0).max(1).default(0.5),
+  cardFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
+  cardFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
+  cardAspectRatio: thumbnailAspectRatioSchema.default('original'),
   thumbnailFocusX: z.coerce.number().finite().min(0).max(1).default(0.5),
   thumbnailFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
   thumbnailFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
-}).transform(({ title, description, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize }) => ({
+  thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
+}).transform(({ title, description, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio }) => ({
   title,
   description,
+  cardAspectRatio,
+  cardFocus: { x: cardFocusX, y: cardFocusY, size: cardFocusSize },
+  thumbnailAspectRatio,
   thumbnailFocus: { x: thumbnailFocusX, y: thumbnailFocusY, size: thumbnailFocusSize },
 }));
 
@@ -259,6 +390,7 @@ export const previewSchema = z.object({
 });
 
 export type SiteSettings = z.infer<typeof settingsSchema>;
+export type ThumbnailAspectRatio = z.infer<typeof thumbnailAspectRatioSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;

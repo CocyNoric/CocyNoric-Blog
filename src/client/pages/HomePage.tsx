@@ -41,8 +41,8 @@ export function HomePage() {
         </div>
       </section>
 
-      <ArticleSection posts={posts} loading={loading} error={error} limit={4} moreLink="/articles" />
-      <GallerySection items={gallery} loading={loading} error={error} limit={6} moreLink="/gallery" />
+      <ArticleSection posts={posts} loading={loading} error={error} limit={settings.homeContent.articleLimit} surfaceOpacity={settings.homeContent.articleSurfaceOpacity} moreLink="/articles" />
+      <GallerySection items={gallery} loading={loading} error={error} limit={settings.homeContent.galleryLimit} surfaceOpacity={settings.homeContent.gallerySurfaceOpacity} moreLink="/gallery" description={settings.galleryDescription} />
     </main>
   </div>;
 }

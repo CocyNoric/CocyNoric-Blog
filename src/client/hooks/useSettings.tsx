@@ -3,10 +3,18 @@ import type { PublicSettings } from '../../shared/types.js';
 import { api } from '../api.js';
 
 const fallbackSettings: PublicSettings = {
-  version: 5,
+  version: 7,
   siteName: 'CocyNoric‘s Blog',
   homeTitle: 'CocyNoric‘s Blog',
   footerText: 'CocyNoric‘s Blog',
+  galleryDescription: '项目、作品与视觉记录。',
+  footerMode: 'transparent',
+  homeContent: {
+    articleLimit: 4,
+    galleryLimit: 6,
+    articleSurfaceOpacity: 0.94,
+    gallerySurfaceOpacity: 0,
+  },
   description: '记录技术、作品与生活。',
   profileName: 'CocyNoric',
   profileAvatar: null,
@@ -32,6 +40,8 @@ const fallbackSettings: PublicSettings = {
       recentPostsLimit: 4,
       showRecentGallery: false,
       recentGalleryLimit: 6,
+      thumbnailColumns: 2,
+      thumbnailRows: 3,
       contentWidth: 820,
     },
     gallery: {

@@ -35,8 +35,8 @@ type RangeSettingProps = {
 
 function RangeSetting({ label, value, defaultValue, min, max, step, suffix = '', disabled, help, onChange }: RangeSettingProps) {
   return <div className="range-setting">
-    <div className="range-setting-heading"><span>{label}：{value}{suffix}</span><button type="button" className="button text-button" onClick={() => onChange(defaultValue)} disabled={disabled || value === defaultValue}>恢复默认</button></div>
-    <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />
+    <div className="range-setting-heading"><span>{label}：{value}{suffix}</span><button type="button" className="button text-button reset-default-button" onClick={() => onChange(defaultValue)} disabled={disabled || value === defaultValue}>恢复默认</button></div>
+    <input className="range-input" type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />
     {help && <small>{help}</small>}
   </div>;
 }
@@ -94,8 +94,18 @@ export function SettingsPage() {
     <section className="settings-section"><h2>站点资料</h2>
       <label className="form-field"><span>站点名称</span><input value={settings.siteName} maxLength={80} onChange={(event) => update('siteName', event.target.value)} required /><small>显示在顶栏和浏览器标题</small></label>
       <label className="form-field"><span>首页 Title</span><input value={settings.homeTitle} maxLength={120} onChange={(event) => update('homeTitle', event.target.value)} required /><small>显示在首页背景上方的大标题</small></label>
-      <label className="form-field"><span>页脚版权名称</span><input value={settings.footerText} maxLength={120} onChange={(event) => update('footerText', event.target.value)} required /><small>页脚会自动添加 © 和当前年份</small></label>
       <label className="form-field"><span>简介</span><textarea rows={3} maxLength={240} value={settings.description} onChange={(event) => update('description', event.target.value)} /><small>显示在首页和详情页个人信息栏</small></label>
+    </section>
+    <section className="settings-section"><h2>页脚</h2>
+      <label className="form-field"><span>页脚版权名称</span><input value={settings.footerText} maxLength={120} onChange={(event) => update('footerText', event.target.value)} required /><small>页脚会自动添加 © 和当前年份</small></label>
+      <SelectField label="页脚底栏背景" value={settings.footerMode} options={[{ value: 'transparent', label: '透明' }, { value: 'primary', label: '主色填充' }]} onChange={(value) => update('footerMode', value)} />
+    </section>
+    <section className="settings-section"><h2>首页展示</h2>
+      <p className="settings-help">只影响首页文章和画廊最大区域，不改变独立列表页。</p>
+      <RangeSetting label="首页文章数量" value={settings.homeContent.articleLimit} defaultValue={4} min={1} max={12} onChange={(value) => update('homeContent', { ...settings.homeContent, articleLimit: value })} />
+      <RangeSetting label="首页图片数量" value={settings.homeContent.galleryLimit} defaultValue={6} min={1} max={20} onChange={(value) => update('homeContent', { ...settings.homeContent, galleryLimit: value })} />
+      <RangeSetting label="文章区域透明度" value={Math.round(settings.homeContent.articleSurfaceOpacity * 100)} defaultValue={94} min={0} max={100} suffix="%" onChange={(value) => update('homeContent', { ...settings.homeContent, articleSurfaceOpacity: value / 100 })} />
+      <RangeSetting label="画廊区域透明度" value={Math.round(settings.homeContent.gallerySurfaceOpacity * 100)} defaultValue={0} min={0} max={100} suffix="%" onChange={(value) => update('homeContent', { ...settings.homeContent, gallerySurfaceOpacity: value / 100 })} />
     </section>
     <section className="settings-section"><h2>个人简介</h2>
       <label className="form-field"><span>个人名称</span><input value={settings.profileName} maxLength={80} onChange={(event) => update('profileName', event.target.value)} required /><small>显示在文章和图片详情页的信息栏</small></label>
@@ -148,6 +158,7 @@ export function SettingsPage() {
         <RangeSetting label="最近文章数量" value={config.recentPostsLimit} defaultValue={4} min={1} max={12} disabled={!config.showRecentPosts} onChange={(value) => updateArticle('recentPostsLimit', value)} />
         <ToggleField label="显示最近画廊" checked={config.showRecentGallery} onChange={(value) => updateArticle('showRecentGallery', value)} />
         <RangeSetting label="最近画廊数量" value={config.recentGalleryLimit} defaultValue={6} min={1} max={20} disabled={!config.showRecentGallery} onChange={(value) => updateArticle('recentGalleryLimit', value)} />
+        <div className="thumbnail-layout-settings"><p className="settings-help">信息栏画廊缩略图</p><RangeSetting label="缩略图列数" value={config.thumbnailColumns} defaultValue={2} min={1} max={5} onChange={(value) => updateArticle('thumbnailColumns', value)} /><RangeSetting label="缩略图行数" value={config.thumbnailRows} defaultValue={3} min={1} max={4} onChange={(value) => updateArticle('thumbnailRows', value)} /><small>最多显示列数 × 行数张图片，并受最近画廊数量限制。</small></div>
       </section>
       <section className="settings-section span-2"><h2>正文宽度</h2>
         <RangeSetting label="文章正文最大宽度" value={config.contentWidth} defaultValue={820} min={600} max={1100} step={10} suffix="px" onChange={(value) => updateArticle('contentWidth', value)} help="范围 600–1100px；正文过长时仍会自然换行" />
@@ -158,6 +169,9 @@ export function SettingsPage() {
   const renderGalleryBrowsing = () => {
     const config = settings.browsing.gallery;
     return <div className="settings-grid">
+      <section className="settings-section"><h2>画廊标题</h2>
+        <label className="form-field"><span>画廊说明</span><textarea rows={3} value={settings.galleryDescription} maxLength={240} onChange={(event) => update('galleryDescription', event.target.value)} /><small>显示在首页和画廊列表的“画廊”标题右侧</small></label>
+      </section>
       <section className="settings-section"><h2>画廊信息栏</h2>
         <p className="settings-help">桌面端可调整信息栏位置和宽度；900px 以下会自动改为主内容在前的信息栏布局。</p>
         <SelectField label="信息栏位置" value={config.railSide} options={[{ value: 'left', label: '左侧' }, { value: 'right', label: '右侧' }]} onChange={(value) => updateGallery('railSide', value)} />
@@ -168,11 +182,11 @@ export function SettingsPage() {
         <RangeSetting label="最近文章数量" value={config.recentPostsLimit} defaultValue={4} min={1} max={12} disabled={!config.showRecentPosts} onChange={(value) => updateGallery('recentPostsLimit', value)} />
         <ToggleField label="显示最近画廊" checked={config.showRecentGallery} onChange={(value) => updateGallery('showRecentGallery', value)} />
         <RangeSetting label="最近画廊数量" value={config.recentGalleryLimit} defaultValue={6} min={1} max={20} disabled={!config.showRecentGallery} onChange={(value) => updateGallery('recentGalleryLimit', value)} />
+        <div className="thumbnail-layout-settings"><p className="settings-help">信息栏画廊缩略图</p><RangeSetting label="缩略图列数" value={config.thumbnailColumns} defaultValue={2} min={1} max={5} onChange={(value) => updateGallery('thumbnailColumns', value)} /><RangeSetting label="缩略图行数" value={config.thumbnailRows} defaultValue={3} min={1} max={4} onChange={(value) => updateGallery('thumbnailRows', value)} /><small>最多显示列数 × 行数张图片，并受最近画廊数量限制。</small></div>
       </section>
       <section className="settings-section span-2"><h2>主图宽度</h2>
         <RangeSetting label="主图宽度" value={config.mediaWidth} defaultValue={705} min={560} max={1100} step={5} suffix="px" onChange={(value) => updateGallery('mediaWidth', value)} help="默认 705px，范围 560–1100px；高度按图片比例自适应，横图不强制裁切" />
         <RangeSetting label="竖图最大高度" value={config.portraitMaxHeight} defaultValue={880} min={560} max={1200} step={10} suffix="px" onChange={(value) => updateGallery('portraitMaxHeight', value)} help="默认 880px；只限制竖图，图片保持原比例显示" />
-        <div className="thumbnail-layout-settings"><p className="settings-help">信息栏画廊缩略图</p><RangeSetting label="缩略图列数" value={config.thumbnailColumns} defaultValue={2} min={1} max={5} onChange={(value) => updateGallery('thumbnailColumns', value)} /><RangeSetting label="缩略图行数" value={config.thumbnailRows} defaultValue={3} min={1} max={4} onChange={(value) => updateGallery('thumbnailRows', value)} /><small>最多显示列数 × 行数张图片，并受最近画廊数量限制。</small></div>
       </section>
     </div>;
   };

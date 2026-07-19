@@ -23,6 +23,6 @@ export function PublicGalleryPage() {
   }, []);
 
   return <main id="main" className="page-shell listing-shell">
-    <GallerySection items={items} loading={loading} error={error} headingLevel="h1" />
+    <GallerySection items={items} loading={loading} error={error} headingLevel="h1" description={settings.galleryDescription} />
   </main>;
 }

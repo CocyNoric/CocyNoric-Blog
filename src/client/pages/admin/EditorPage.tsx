@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PostInput } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
+import { DateField } from '../../components/DateField.js';
 import { ImageIcon } from '../../components/Icons.js';
 import { SelectField } from '../../components/SelectField.js';
 import { validateImageFile } from '../../components/ImageDropField.js';
@@ -104,7 +105,7 @@ export function EditorPage() {
       <div className="metadata-grid">
         <label className="form-field span-2"><span>标题</span><input value={post.title} maxLength={160} onChange={(event) => update('title', event.target.value)} required /></label>
         <label className="form-field"><span>文章路径</span><input value={post.slug} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="my-post" onChange={(event) => update('slug', event.target.value)} required /></label>
-        <label className="form-field"><span>日期</span><input type="date" value={post.date} onChange={(event) => update('date', event.target.value)} required /></label>
+        <DateField label="日期" value={post.date} onChange={(value) => update('date', value)} required />
         <SelectField label="状态" value={post.status} options={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '发布' }]} onChange={(value) => update('status', value)} />
         <label className="form-field"><span>标签（逗号分隔）</span><input value={tags} onChange={(event) => { setTags(event.target.value); setDirty(true); }} placeholder="技术, 项目" /></label>
         <label className="form-field span-2"><span>摘要</span><textarea rows={2} maxLength={320} value={post.excerpt} onChange={(event) => update('excerpt', event.target.value)} /></label>

@@ -1,7 +1,13 @@
 import { Link } from 'react-router-dom';
+import type { CSSProperties } from 'react';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
 import { ArrowIcon, CalendarIcon } from './Icons.js';
+
+function cardAspectRatio(item: GalleryItem) {
+  if (item.cardAspectRatio !== 'original') return item.cardAspectRatio.replace(':', ' / ');
+  return item.width && item.height ? `${item.width} / ${item.height}` : '4 / 3';
+}
 
 export function PostCard({ post }: { post: PostSummary }) {
   return <article className="card post-card">
@@ -19,8 +25,8 @@ export function PostCard({ post }: { post: PostSummary }) {
 
 export function GalleryCard({ item }: { item: GalleryItem }) {
   return <article className="gallery-card">
-    <Link className="gallery-visual" to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
-      <img src={item.url} alt={item.title} loading="lazy" />
+    <Link className="gallery-visual" style={{ aspectRatio: cardAspectRatio(item) }} to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
+      <img src={item.url} alt={item.title} loading="lazy" style={{ objectPosition: `${item.cardFocus.x * 100}% ${item.cardFocus.y * 100}%`, transform: `scale(${1 / item.cardFocus.size})`, transformOrigin: `${item.cardFocus.x * 100}% ${item.cardFocus.y * 100}%` } as CSSProperties} />
     </Link>
     <div className="gallery-copy">
       <h3>{item.title}</h3>

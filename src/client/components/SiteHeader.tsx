@@ -38,7 +38,7 @@ export function SiteHeader() {
       <div className="header-actions">
         <form className="header-search" role="search" onSubmit={search}>
           <SearchIcon />
-          <label className="visually-hidden" htmlFor="site-search">搜索文章</label>
+          <label className="visually-hidden" htmlFor="site-search">搜索文章和画廊</label>
           <input id="site-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索" />
         </form>
         <button className="icon-button" type="button" onClick={toggle} aria-label={mode === 'dark' ? '切换到亮色模式' : '切换到暗色模式'} title={mode === 'dark' ? '亮色模式' : '暗色模式'}>

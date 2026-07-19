@@ -7,6 +7,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   busy?: boolean;
   destructive?: boolean;
+  wide?: boolean;
   children?: ReactNode;
   onCancel: () => void;
   onConfirm: () => void;
@@ -19,6 +20,7 @@ export function ConfirmDialog({
   confirmLabel = '确定',
   busy = false,
   destructive = false,
+  wide = false,
   children,
   onCancel,
   onConfirm,
@@ -49,7 +51,7 @@ export function ConfirmDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="md-dialog"
+      className={`md-dialog${wide ? ' md-dialog-wide' : ''}`}
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-description`}
       onCancel={(event) => {

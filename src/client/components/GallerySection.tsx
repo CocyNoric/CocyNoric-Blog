@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import { ArrowIcon } from './Icons.js';
@@ -10,13 +11,16 @@ type GallerySectionProps = {
   headingLevel?: 'h1' | 'h2';
   limit?: number;
   moreLink?: string;
+  description?: string;
+  surfaceOpacity?: number;
 };
 
-export function GallerySection({ items, loading, error = '', headingLevel = 'h2', limit, moreLink }: GallerySectionProps) {
-  const Heading = headingLevel;  return <section id="gallery" className="content-section gallery-section" aria-labelledby="gallery-heading">
+export function GallerySection({ items, loading, error = '', headingLevel = 'h2', limit, moreLink, description = '项目、作品与视觉记录。', surfaceOpacity }: GallerySectionProps) {
+  const Heading = headingLevel;
+  return <section id="gallery" className={`content-section gallery-section${surfaceOpacity === undefined ? '' : ' home-surface'}`} aria-labelledby="gallery-heading" style={surfaceOpacity === undefined ? undefined : { '--surface-opacity': surfaceOpacity } as CSSProperties}>
     <div className="section-heading">
       <div><p className="eyebrow">Gallery</p><Heading id="gallery-heading">画廊</Heading></div>
-      <p className="section-description">项目、作品与视觉记录。</p>
+      <p className="section-description">{description}</p>
     </div>
     {error && <div className="message error-message" role="alert">{error}</div>}
     {loading

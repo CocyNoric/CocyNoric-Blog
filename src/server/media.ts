@@ -46,11 +46,17 @@ export async function processImageFile(temporaryPath: string) {
     await rename(temporaryPath, destination);
   }
 
-  return { url: `/media/${filename}`, filePath: destination };
+  const metadata = await sharp(destination).metadata();
+  return {
+    url: `/media/${filename}`,
+    filePath: destination,
+    width: metadata.width,
+    height: metadata.height,
+  };
 }
 
 export async function receiveImage(req: Request, fieldLimit = 2) {
-  return new Promise<{ url: string; filePath: string; fields: Record<string, string> }>((resolve, reject) => {
+  return new Promise<{ url: string; filePath: string; fields: Record<string, string>; width?: number; height?: number }>((resolve, reject) => {
     let settled = false;
     let temporaryPath: string | null = null;
     const fields: Record<string, string> = {};

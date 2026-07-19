@@ -42,7 +42,7 @@ export function PostPage() {
       railWidth={config.railWidth}
       primaryWidth={config.contentWidth}
       header={<Link className="back-link" to="/articles"><ArrowIcon />返回文章列表</Link>}
-      aside={<InformationBar profileName={settings.profileName} description={settings.description} profileAvatar={settings.profileAvatar} recentPosts={recentPosts} galleryItems={galleryItems} supplementalError={supplementalError} />}
+      aside={<InformationBar profileName={settings.profileName} description={settings.description} profileAvatar={settings.profileAvatar} recentPosts={recentPosts} galleryItems={galleryItems} thumbnailColumns={config.thumbnailColumns} thumbnailRows={config.thumbnailRows} supplementalError={supplementalError} />}
     >
       <article className="article-surface">
         <header className="article-header">

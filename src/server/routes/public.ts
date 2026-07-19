@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { dataStore } from '../dataStore.js';
 import { renderMarkdown } from '../markdown.js';
 import { createThemeTokens } from '../theme.js';
+import { matchesGalleryTitle } from '../../shared/search.js';
 
 export const publicRouter = Router();
 
@@ -14,9 +15,11 @@ publicRouter.get('/settings', async (_req, res, next) => {
   }
 });
 
-publicRouter.get('/gallery', async (_req, res, next) => {
+publicRouter.get('/gallery', async (req, res, next) => {
   try {
-    res.json(await dataStore.listGallery());
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const items = await dataStore.listGallery();
+    res.json(query ? items.filter((item) => matchesGalleryTitle(item.title, query)) : items);
   } catch (error) {
     next(error);
   }
