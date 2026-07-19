@@ -82,19 +82,35 @@ test('initializes settings and starter posts', async () => {
   const posts = await dataStore.listPosts();
 
   assert.equal(settings.siteName, 'CocyNoric‘s Blog');
+  assert.equal(settings.profileName, 'CocyNoric');
+  assert.equal(settings.profileAvatar, null);
+  assert.equal(settings.webIcon, null);
+  assert.equal(settings.version, 5);
+  assert.equal(settings.homeHero.minHeight, 680);
+  assert.equal(settings.homeHero.titleAlign, 'left');
+  assert.equal(settings.homeHero.contentOffset, 0);
+  assert.equal(settings.browsing.article.railWidth, 340);
+  assert.equal(settings.browsing.article.contentWidth, 820);
+  assert.equal(settings.browsing.article.showRecentGallery, false);
+  assert.equal(settings.browsing.gallery.railWidth, 340);
+  assert.equal(settings.browsing.gallery.mediaWidth, 705);
+  assert.equal(settings.browsing.gallery.portraitMaxHeight, 880);
+  assert.equal(settings.browsing.gallery.thumbnailColumns, 2);
+  assert.equal(settings.browsing.gallery.thumbnailRows, 3);
   assert.equal(settings.homeTitle, 'CocyNoric‘s Blog');
   assert.equal(settings.footerText, 'CocyNoric‘s Blog');
   assert.equal(posts.length, 3);
   assert.ok(posts.every((post) => post.status === 'published'));
 });
 
-test('adds and persists the footer setting without a version migration', async () => {
+test('migrates legacy settings and persists independent profile and browsing options', async () => {
+  const legacyAvatar = '/media/123e4567-e89b-12d3-a456-426614174000.webp';
   const legacy = {
     version: 1 as const,
     siteName: '旧站点名称',
     homeTitle: '旧首页标题',
     description: '',
-    avatar: null,
+    avatar: legacyAvatar,
     backgroundImage: null,
     backgroundPosition: 'center' as const,
     backgroundOverlay: 0.8,
@@ -105,10 +121,78 @@ test('adds and persists the footer setting without a version migration', async (
     bodyFontSize: 16,
   };
 
-  assert.equal(settingsSchema.parse(legacy).footerText, 'CocyNoric‘s Blog');
-  const saved = await dataStore.writeSettings({ ...settingsSchema.parse(legacy), footerText: '独立版权名称' });
+  const migratedV1 = settingsSchema.parse(legacy);
+  assert.equal(migratedV1.footerText, 'CocyNoric‘s Blog');
+  assert.equal(migratedV1.version, 5);
+  assert.equal(migratedV1.profileName, '旧站点名称');
+  assert.equal(migratedV1.profileAvatar, legacyAvatar);
+  assert.equal(migratedV1.webIcon, legacyAvatar);
+  assert.equal('avatar' in migratedV1, false);
+  assert.deepEqual(migratedV1.browsing.article, {
+    railSide: 'left', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
+    showRecentGallery: false, recentGalleryLimit: 6, contentWidth: 820,
+  });
+  assert.deepEqual(migratedV1.browsing.gallery, {
+    railSide: 'right', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
+    showRecentGallery: true, recentGalleryLimit: 6, mediaWidth: 705,
+    portraitMaxHeight: 880, thumbnailColumns: 2, thumbnailRows: 3,
+  });
+
+  const migratedV2 = settingsSchema.parse({
+    ...legacy,
+    version: 2 as const,
+    footerText: '旧版权名称',
+    detailRail: {
+      recentPostsLimit: 7,
+      thumbnailLimit: 5,
+      desktopWidth: 380,
+      article: { side: 'right' as const },
+      gallery: { side: 'left' as const },
+    },
+  });
+  assert.equal(migratedV2.version, 5);
+  assert.equal(migratedV2.profileName, '旧站点名称');
+  assert.equal(migratedV2.profileAvatar, legacyAvatar);
+  assert.equal(migratedV2.webIcon, legacyAvatar);
+  assert.equal(migratedV2.browsing.article.recentPostsLimit, 7);
+  assert.equal(migratedV2.browsing.article.railSide, 'right');
+  assert.equal(migratedV2.browsing.gallery.recentGalleryLimit, 5);
+  assert.equal(migratedV2.browsing.gallery.railSide, 'left');
+
+  const saved = await dataStore.writeSettings({
+    ...migratedV1,
+    footerText: '独立版权名称',
+    profileName: '个人名称',
+    profileAvatar: '/media/123e4567-e89b-12d3-a456-426614174001.png',
+    webIcon: null,
+    browsing: {
+      article: {
+        railSide: 'right', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
+        showRecentGallery: true, recentGalleryLimit: 3, contentWidth: 880,
+      },
+      gallery: {
+        railSide: 'left', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
+        showRecentGallery: true, recentGalleryLimit: 3, mediaWidth: 880,
+        portraitMaxHeight: 900, thumbnailColumns: 3, thumbnailRows: 2,
+      },
+    },
+  });
   assert.equal(saved.footerText, '独立版权名称');
-  assert.equal((await dataStore.readSettings()).footerText, '独立版权名称');
+  assert.equal(saved.profileName, '个人名称');
+  assert.equal(saved.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
+  assert.equal(saved.webIcon, null);
+  assert.equal(saved.browsing.article.railWidth, 420);
+  assert.equal(saved.browsing.article.railSide, 'right');
+  assert.equal(saved.browsing.gallery.railSide, 'left');
+  assert.equal(saved.browsing.gallery.mediaWidth, 880);
+  assert.equal(saved.browsing.gallery.thumbnailColumns, 3);
+
+  const persisted = await dataStore.readSettings();
+  assert.equal(persisted.footerText, '独立版权名称');
+  assert.equal(persisted.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
+  assert.equal(persisted.webIcon, null);
+  assert.equal(persisted.browsing.article.railWidth, 420);
+  assert.equal(persisted.browsing.gallery.recentGalleryLimit, 3);
 });
 
 test('rejects stale post saves and duplicate slugs', async () => {
@@ -163,6 +247,7 @@ test('stores and deletes gallery metadata', async () => {
   });
 
   assert.equal((await dataStore.listGallery())[0]?.title, '测试图片');
+  assert.deepEqual((await dataStore.listGallery())[0]?.thumbnailFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.deleteGalleryItem(item.id))?.id, item.id);
   assert.deepEqual(await dataStore.listGallery(), []);
 });
@@ -174,8 +259,8 @@ test('updates gallery metadata without changing media fields', async () => {
     description: '原始说明',
   });
 
-  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明' });
-  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明' });
+  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', thumbnailFocus: { x: 0.2, y: 0.8, size: 0.6 } });
+  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', thumbnailFocus: { x: 0.2, y: 0.8, size: 0.6 } });
   assert.equal((await dataStore.getGalleryItem(item.id))?.url, item.url);
   await dataStore.deleteGalleryItem(item.id);
 });
@@ -277,4 +362,20 @@ test('validates customization boundaries', () => {
   assert.equal(settingsSchema.safeParse({ ...settings, backgroundOverlay: 1.01 }).success, false);
   assert.equal(settingsSchema.safeParse({ ...settings, seedColor: 'red' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...settings, backgroundImage: 'https://example.com/a.jpg' }).success, false);
+  const current = settingsSchema.parse(settings);
+  assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: 'https://example.com/avatar.png' }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, webIcon: '/media/icon.svg' }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: null, webIcon: null }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, homeHero: { minHeight: 519, titleAlign: 'left', contentOffset: 0 } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, homeHero: { minHeight: 680, titleAlign: 'center', contentOffset: 181 } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, railWidth: 279 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, railWidth: 440, mediaWidth: 880 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, recentPostsLimit: 0 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, railSide: 'center' } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, contentWidth: 1100 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, mediaWidth: 1101 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, portraitMaxHeight: 559 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailColumns: 6 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailRows: 4 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, homeHero: { minHeight: 680, titleAlign: 'left', contentOffset: 0 }, browsing: current.browsing }).success, true);
 });

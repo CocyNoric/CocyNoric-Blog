@@ -90,6 +90,9 @@ export const api = {
     body.append('image', file);
     body.append('title', input.title);
     body.append('description', input.description);
+    body.append('thumbnailFocusX', String(input.thumbnailFocus?.x ?? 0.5));
+    body.append('thumbnailFocusY', String(input.thumbnailFocus?.y ?? 0.5));
+    body.append('thumbnailFocusSize', String(input.thumbnailFocus?.size ?? 1));
     return request<GalleryItem>('/api/admin/gallery', {
       method: 'POST',
       headers: writeHeaders(csrfToken),
@@ -120,7 +123,7 @@ export const api = {
       body,
     });
   },
-  uploadSettingMedia: (kind: 'avatar' | 'background', file: File, csrfToken: string) => {
+  uploadSettingMedia: (kind: 'profileAvatar' | 'webIcon' | 'background', file: File, csrfToken: string) => {
     const body = new FormData();
     body.append('image', file);
     return request<SiteSettings>(`/api/admin/settings/media/${kind}`, {

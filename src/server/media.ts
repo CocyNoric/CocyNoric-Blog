@@ -49,7 +49,7 @@ export async function processImageFile(temporaryPath: string) {
   return { url: `/media/${filename}`, filePath: destination };
 }
 
-export async function receiveImage(req: Request) {
+export async function receiveImage(req: Request, fieldLimit = 2) {
   return new Promise<{ url: string; filePath: string; fields: Record<string, string> }>((resolve, reject) => {
     let settled = false;
     let temporaryPath: string | null = null;
@@ -76,7 +76,7 @@ export async function receiveImage(req: Request) {
 
     let busboy: Busboy.Busboy;
     try {
-      busboy = Busboy({ headers: req.headers, limits: { files: 1, fileSize: config.uploadLimit, fields: 2 } });
+      busboy = Busboy({ headers: req.headers, limits: { files: 1, fileSize: config.uploadLimit, fields: fieldLimit } });
     } catch {
       reject(uploadError('上传格式无效'));
       return;

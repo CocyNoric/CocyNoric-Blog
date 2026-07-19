@@ -3,17 +3,24 @@ import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
-import { galleryInputSchema, galleryItemSchema, postInputSchema, postMetaSchema, settingsSchema, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { galleryInputSchema, galleryItemSchema, migrateSettings, postInputSchema, postMetaSchema, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 
 const defaultSettings: SiteSettings = {
-  version: 1,
+  version: 5,
   siteName: 'CocyNoric‘s Blog',
   homeTitle: 'CocyNoric‘s Blog',
   footerText: 'CocyNoric‘s Blog',
   description: '记录技术、作品与生活。',
-  avatar: null,
+  profileName: 'CocyNoric',
+  profileAvatar: null,
+  webIcon: null,
+  homeHero: {
+    minHeight: 680,
+    titleAlign: 'left',
+    contentOffset: 0,
+  },
   backgroundImage: null,
   backgroundPosition: 'center',
   backgroundOverlay: 0.86,
@@ -22,6 +29,29 @@ const defaultSettings: SiteSettings = {
   contentWidth: 'standard',
   cardDensity: 'comfortable',
   bodyFontSize: 16,
+  browsing: {
+    article: {
+      railSide: 'left',
+      railWidth: 340,
+      showRecentPosts: true,
+      recentPostsLimit: 4,
+      showRecentGallery: false,
+      recentGalleryLimit: 6,
+      contentWidth: 820,
+    },
+    gallery: {
+      railSide: 'right',
+      railWidth: 340,
+      showRecentPosts: true,
+      recentPostsLimit: 4,
+      showRecentGallery: true,
+      recentGalleryLimit: 6,
+      mediaWidth: 705,
+      portraitMaxHeight: 880,
+      thumbnailColumns: 2,
+      thumbnailRows: 3,
+    },
+  },
 };
 
 const starterPosts: Array<Omit<PostInput, 'version'>> = [
@@ -103,11 +133,14 @@ class DataStore {
   }
 
   async readSettings() {
-    return settingsSchema.parse(JSON.parse(await readFile(this.paths.settings, 'utf8')));
+    const raw = JSON.parse(await readFile(this.paths.settings, 'utf8')) as unknown;
+    const settings = migrateSettings(raw);
+    if (JSON.stringify(raw) !== JSON.stringify(settings)) await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
+    return settings;
   }
 
   async writeSettings(input: SiteSettings) {
-    const settings = settingsSchema.parse(input);
+    const settings = migrateSettings(input);
     await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
     return settings;
   }
@@ -121,7 +154,7 @@ class DataStore {
     return (await this.listGallery()).find((item) => item.id === id) ?? null;
   }
 
-  async addGalleryItem(input: Omit<GalleryItem, 'id' | 'createdAt'>) {
+  async addGalleryItem(input: Pick<GalleryItem, 'url' | 'title' | 'description'> & Partial<Pick<GalleryItem, 'thumbnailFocus'>>) {
     const item = galleryItemSchema.parse({ ...input, id: randomUUID(), createdAt: new Date().toISOString() });
     const items = await this.listGallery();
     await this.atomicWrite(this.paths.gallery, `${JSON.stringify([item, ...items], null, 2)}\n`);

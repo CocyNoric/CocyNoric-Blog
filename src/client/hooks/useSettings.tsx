@@ -3,12 +3,19 @@ import type { PublicSettings } from '../../shared/types.js';
 import { api } from '../api.js';
 
 const fallbackSettings: PublicSettings = {
-  version: 1,
+  version: 5,
   siteName: 'CocyNoric‘s Blog',
   homeTitle: 'CocyNoric‘s Blog',
   footerText: 'CocyNoric‘s Blog',
   description: '记录技术、作品与生活。',
-  avatar: null,
+  profileName: 'CocyNoric',
+  profileAvatar: null,
+  webIcon: null,
+  homeHero: {
+    minHeight: 680,
+    titleAlign: 'left',
+    contentOffset: 0,
+  },
   backgroundImage: null,
   backgroundPosition: 'center',
   backgroundOverlay: 0.86,
@@ -17,6 +24,29 @@ const fallbackSettings: PublicSettings = {
   contentWidth: 'standard',
   cardDensity: 'comfortable',
   bodyFontSize: 16,
+  browsing: {
+    article: {
+      railSide: 'left',
+      railWidth: 340,
+      showRecentPosts: true,
+      recentPostsLimit: 4,
+      showRecentGallery: false,
+      recentGalleryLimit: 6,
+      contentWidth: 820,
+    },
+    gallery: {
+      railSide: 'right',
+      railWidth: 340,
+      showRecentPosts: true,
+      recentPostsLimit: 4,
+      showRecentGallery: true,
+      recentGalleryLimit: 6,
+      mediaWidth: 705,
+      portraitMaxHeight: 880,
+      thumbnailColumns: 2,
+      thumbnailRows: 3,
+    },
+  },
   themes: { light: {}, dark: {} },
 };
 
@@ -61,15 +91,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const current = document.querySelector<HTMLLinkElement>('link[data-site-favicon]');
-    if (!settings.avatar) {
+    if (!settings.webIcon) {
       current?.remove();
       return;
     }
     const favicon = current ?? document.head.appendChild(document.createElement('link'));
     favicon.dataset.siteFavicon = '';
     favicon.rel = 'icon';
-    favicon.href = settings.avatar;
-  }, [settings.avatar]);
+    favicon.href = settings.webIcon;
+  }, [settings.webIcon]);
 
   const value = useMemo(() => ({ settings, loading, refresh }), [settings, loading]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

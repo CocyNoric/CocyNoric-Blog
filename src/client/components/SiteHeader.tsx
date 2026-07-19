@@ -27,7 +27,7 @@ export function SiteHeader() {
     <div className="header-inner">
       <div className="header-leading">
         <Link className="brand" to="/">
-          {settings.avatar && <span className="brand-avatar" aria-hidden="true"><img src={settings.avatar} alt="" /></span>}
+          {settings.webIcon && <span className="brand-avatar" aria-hidden="true"><img src={settings.webIcon} alt="" /></span>}
           <span>{settings.siteName}</span>
         </Link>
         <nav className="main-nav" aria-label="主导航">

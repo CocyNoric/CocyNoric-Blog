@@ -5,6 +5,7 @@ import { AdminNav } from '../../components/AdminNav.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { EditIcon, ImageIcon, TrashIcon } from '../../components/Icons.js';
 import { ImageDropField } from '../../components/ImageDropField.js';
+import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
 export function GalleryPage() {
@@ -14,12 +15,14 @@ export function GalleryPage() {
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [thumbnailFocus, setThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<GalleryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<GalleryItem | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editThumbnailFocus, setEditThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -40,6 +43,7 @@ export function GalleryPage() {
     setError('');
     setMessage('');
     setFile(selected);
+    setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 });
   };
 
   const upload = async (event: FormEvent<HTMLFormElement>) => {
@@ -47,9 +51,9 @@ export function GalleryPage() {
     if (!file) { setError('请选择要上传的图片'); return; }
     setBusy(true); setError(''); setMessage('');
     try {
-      const item = await api.uploadGalleryItem({ title, description }, file, csrfToken);
+      const item = await api.uploadGalleryItem({ title, description, thumbnailFocus }, file, csrfToken);
       setItems((current) => [item, ...current]);
-      setTitle(''); setDescription(''); setFile(null);
+      setTitle(''); setDescription(''); setFile(null); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 });
       setMessage('图片已上传并发布到首页画廊。');
     } catch (cause) {
       setError((cause as Error).message);
@@ -76,6 +80,7 @@ export function GalleryPage() {
   const beginEdit = (item: GalleryItem) => {
     setEditTitle(item.title);
     setEditDescription(item.description);
+    setEditThumbnailFocus(item.thumbnailFocus);
     setEditing(item);
   };
 
@@ -83,7 +88,7 @@ export function GalleryPage() {
     if (!editing || !editTitle.trim()) return;
     setSavingEdit(true); setError(''); setMessage('');
     try {
-      const item = await api.updateGalleryItem(editing.id, { title: editTitle, description: editDescription }, csrfToken);
+      const item = await api.updateGalleryItem(editing.id, { title: editTitle, description: editDescription, thumbnailFocus: editThumbnailFocus }, csrfToken);
       setItems((current) => current.map((candidate) => candidate.id === item.id ? item : candidate));
       setEditing(null);
       setMessage('图片信息已更新。');
@@ -113,6 +118,7 @@ export function GalleryPage() {
           {!file && <small>PNG、JPEG 或 WebP，最大 20 MB；超过 5 MB 自动压缩为 WebP</small>}
         </span>
       </ImageDropField>
+      {previewUrl && <ThumbnailFocalSelector imageUrl={previewUrl} value={thumbnailFocus} onChange={setThumbnailFocus} />}
       <div className="gallery-upload-fields">
         <label className="form-field"><span>标题</span><input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} required /></label>
         <label className="form-field"><span>说明</span><textarea rows={2} value={description} maxLength={240} onChange={(event) => setDescription(event.target.value)} /></label>
@@ -157,6 +163,7 @@ export function GalleryPage() {
       <div className="dialog-form">
         <label className="form-field"><span>标题</span><input value={editTitle} maxLength={120} onChange={(event) => setEditTitle(event.target.value)} required /></label>
         <label className="form-field"><span>说明</span><textarea rows={3} value={editDescription} maxLength={240} onChange={(event) => setEditDescription(event.target.value)} /></label>
+        {editing && <ThumbnailFocalSelector imageUrl={editing.url} value={editThumbnailFocus} onChange={setEditThumbnailFocus} />}
       </div>
     </ConfirmDialog>
   </main>;

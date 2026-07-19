@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
 import { api } from '../api.js';
@@ -26,10 +26,19 @@ export function HomePage() {
 
   return <div className="public-page">
     <main id="main" className="page-shell home-shell">
-      <section className="intro" aria-labelledby="intro-title">
-        <p className="eyebrow">Blog</p>
-        <h1 id="intro-title">{settings.homeTitle}</h1>
-        <p>{settings.description}</p>
+      <section
+        className={`intro intro-align-${settings.homeHero.titleAlign}`}
+        aria-labelledby="intro-title"
+        style={{
+          '--home-hero-height': `${settings.homeHero.minHeight}px`,
+          '--home-hero-offset': `${settings.homeHero.contentOffset}px`,
+        } as CSSProperties}
+      >
+        <div className="intro-content">
+          <p className="eyebrow">Blog</p>
+          <h1 id="intro-title">{settings.homeTitle}</h1>
+          <p>{settings.description}</p>
+        </div>
       </section>
 
       <ArticleSection posts={posts} loading={loading} error={error} limit={4} moreLink="/articles" />

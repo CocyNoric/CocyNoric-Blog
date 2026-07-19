@@ -1,7 +1,7 @@
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { Router } from 'express';
-import { galleryInputSchema, postInputSchema, previewSchema, settingsSchema } from '../../shared/schemas.js';
+import { galleryInputSchema, galleryUploadInputSchema, postInputSchema, previewSchema } from '../../shared/schemas.js';
 import { requireAuth, requireWriteProtection } from '../auth.js';
 import { dataStore } from '../dataStore.js';
 import { receiveImage } from '../media.js';
@@ -90,7 +90,7 @@ adminRouter.get('/settings', async (_req, res, next) => {
 
 adminRouter.put('/settings', requireWriteProtection, async (req, res, next) => {
   try {
-    res.json(await dataStore.writeSettings(settingsSchema.parse(req.body)));
+    res.json(await dataStore.writeSettings(req.body));
   } catch (error) {
     next(error);
   }
@@ -108,8 +108,8 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   let upload: Awaited<ReturnType<typeof receiveImage>> | null = null;
   try {
-    upload = await receiveImage(req);
-    const input = galleryInputSchema.parse(upload.fields);
+    upload = await receiveImage(req, 5);
+    const input = galleryUploadInputSchema.parse(upload.fields);
     res.status(201).json(await dataStore.addGalleryItem({ ...input, url: upload.url }));
   } catch (error) {
     if (upload) await unlink(upload.filePath).catch(() => undefined);
@@ -157,13 +157,18 @@ adminRouter.delete('/gallery/:id', requireWriteProtection, async (req, res, next
 adminRouter.post('/settings/media/:kind', requireWriteProtection, async (req, res, next) => {
   try {
     const kind = req.params.kind;
-    if (kind !== 'avatar' && kind !== 'background') {
+    const mediaFields = {
+      profileAvatar: 'profileAvatar',
+      webIcon: 'webIcon',
+      background: 'backgroundImage',
+    } as const;
+    const key = mediaFields[kind as keyof typeof mediaFields];
+    if (!key) {
       res.status(400).json({ error: '媒体类型无效' });
       return;
     }
     const upload = await receiveImage(req);
     const current = await dataStore.readSettings();
-    const key = kind === 'avatar' ? 'avatar' : 'backgroundImage';
     try {
       const settings = await dataStore.writeSettings({ ...current, [key]: upload.url });
       res.json(settings);
