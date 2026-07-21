@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
 import { api } from '../api.js';
@@ -10,6 +10,7 @@ import { useSettings } from '../hooks/useSettings.js';
 
 export function GalleryDetailPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const { settings } = useSettings();
   const config = settings.browsing.gallery;
   const [item, setItem] = useState<GalleryItem | null>(null);
@@ -25,6 +26,7 @@ export function GalleryDetailPage() {
     setRecentPosts(undefined); setGalleryItems(undefined);
     void api.galleryItem(id).then((value) => {
       setItem(value);
+      if (value.id !== id) navigate(`/gallery/${value.id}`, { replace: true });
       document.title = `${value.title} · ${settings.siteName}`;
     }).catch((cause: Error) => setError(cause.message));
 
@@ -38,7 +40,7 @@ export function GalleryDetailPage() {
         : visible);
     }).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
     void Promise.all(requests);
-  }, [id, settings.siteName, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
+  }, [id, navigate, settings.siteName, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell listing-shell"><div className="empty-state"><h1>图片未找到</h1><p>{error}</p><Link className="button primary-button" to="/gallery">返回画廊</Link></div></main>;
   if (!item) return <main id="main" className="page-shell listing-shell"><p className="loading-state">正在载入图片…</p></main>;

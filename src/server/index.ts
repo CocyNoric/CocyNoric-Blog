@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import { cleanExpiredSessions } from './auth.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
-import { serveMedia } from './media.js';
+import { serveGalleryMedia, serveMedia } from './media.js';
 import { adminRouter } from './routes/admin.js';
 import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/public.js';
@@ -32,7 +32,12 @@ app.use(helmet({
 }));
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/media/:filename', serveMedia);
+app.get('/media/gallery/:id/:filename', (req, res, next) => {
+  void serveGalleryMedia(req, res).catch(next);
+});
+app.get('/media/:filename', (req, res, next) => {
+  void serveMedia(req, res).catch(next);
+});
 app.use('/api', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);

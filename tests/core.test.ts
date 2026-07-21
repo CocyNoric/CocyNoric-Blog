@@ -1,19 +1,24 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import test, { after } from 'node:test';
 
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, validateCodeToolFilename }, { repositoryOverview, repositoryTree }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
   import('../src/shared/schemas.js'),
   import('../src/server/postImport.js'),
   import('../src/shared/search.js'),
+  import('../src/server/galleryFilename.js'),
+  import('../src/server/codeTools.js'),
+  import('../src/server/repositoryStore.js'),
 ]);
 
 function crc32(source: Buffer) {
@@ -71,6 +76,42 @@ function createZip(entries: Array<{ name: string; source: Buffer | string; exter
   return Buffer.concat([...locals, centralDirectory, end]);
 }
 
+function createProjectUpload(input: {
+  projectName: string;
+  mode: 'folder' | 'zip';
+  zipMode?: 'extract' | 'keep';
+  files: Array<{ name: string; source: Buffer | string; contentType?: string }>;
+}) {
+  const boundary = `----cocynoric-project-${createHash('sha256').update(`${input.projectName}-${input.mode}`).digest('hex').slice(0, 12)}`;
+  const parts: Buffer[] = [];
+  const field = (name: string, value: string) => {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+  };
+  field('projectName', input.projectName);
+  field('description', '测试项目');
+  field('mode', input.mode);
+  field('zipMode', input.zipMode ?? 'extract');
+  for (const file of input.files) {
+    const source = Buffer.isBuffer(file.source) ? file.source : Buffer.from(file.source, 'utf8');
+    parts.push(
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${file.name}"\r\nContent-Type: ${file.contentType ?? 'application/octet-stream'}\r\n\r\n`),
+      source,
+      Buffer.from('\r\n'),
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  const body = Buffer.concat(parts);
+  const request = Object.assign(new PassThrough(), {
+    headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-length': String(body.length),
+    },
+  }) as Parameters<typeof receiveCodeToolProject>[0];
+  const received = receiveCodeToolProject(request);
+  request.end(body);
+  return received;
+}
+
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 after(async () => {
@@ -82,13 +123,24 @@ test('initializes settings and starter posts', async () => {
   const settings = await dataStore.readSettings();
   const posts = await dataStore.listPosts();
 
-  assert.equal(settings.siteName, 'CocyNoric‘s Blog');
+  assert.equal(settings.siteName, "CocyNoric's Blog");
   assert.equal(settings.profileName, 'CocyNoric');
   assert.equal(settings.profileAvatar, null);
   assert.equal(settings.webIcon, null);
-  assert.equal(settings.version, 7);
+  assert.equal(settings.version, 10);
+  assert.equal(settings.repositoryAppearance.backgroundImage, null);
+  assert.equal(settings.repositoryAppearance.headingMinHeight, 220);
+  assert.equal(settings.repositoryAppearance.titleAlign, 'left');
+  assert.equal(settings.repositoryAppearance.contentOffset, 0);
+  assert.equal(settings.repositoryAppearance.surfaceOpacity, 1);
+  assert.equal(settings.repositoryAppearance.directoryLayout, 'grid');
+  assert.equal(settings.repositoryAppearance.showDescriptions, true);
+  assert.equal(settings.repositoryAppearance.showItemCounts, true);
+  assert.equal(settings.repositoryAppearance.showFileMetadata, true);
   assert.equal(settings.footerMode, 'transparent');
   assert.equal(settings.galleryDescription, '项目、作品与视觉记录。');
+  assert.equal(settings.repositoryTitle, '仓库');
+  assert.equal(settings.repositoryDescription, '代码、工具与项目归档。');
   assert.deepEqual(settings.homeContent, { articleLimit: 4, galleryLimit: 6, articleSurfaceOpacity: 0.94, gallerySurfaceOpacity: 0 });
   assert.equal(settings.homeHero.minHeight, 680);
   assert.equal(settings.homeHero.titleAlign, 'left');
@@ -103,8 +155,8 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.browsing.gallery.portraitMaxHeight, 880);
   assert.equal(settings.browsing.gallery.thumbnailColumns, 2);
   assert.equal(settings.browsing.gallery.thumbnailRows, 3);
-  assert.equal(settings.homeTitle, 'CocyNoric‘s Blog');
-  assert.equal(settings.footerText, 'CocyNoric‘s Blog');
+  assert.equal(settings.homeTitle, "CocyNoric's Blog");
+  assert.equal(settings.footerText, "CocyNoric's Blog");
   assert.equal(posts.length, 3);
   assert.ok(posts.every((post) => post.status === 'published'));
 });
@@ -128,14 +180,39 @@ test('migrates legacy settings and persists independent profile and browsing opt
   };
 
   const migratedV1 = settingsSchema.parse(legacy);
-  assert.equal(migratedV1.footerText, 'CocyNoric‘s Blog');
-  assert.equal(migratedV1.version, 7);
+  assert.equal(migratedV1.footerText, "CocyNoric's Blog");
+  assert.equal(migratedV1.version, 10);
+  assert.deepEqual(migratedV1.repositoryAppearance, {
+    backgroundImage: null,
+    headingMinHeight: 220,
+    titleAlign: 'left',
+    contentOffset: 0,
+    surfaceOpacity: 1,
+    directoryLayout: 'grid',
+    showDescriptions: true,
+    showItemCounts: true,
+    showFileMetadata: true,
+    showRecentUpdates: true,
+  });
   assert.equal(migratedV1.footerMode, 'transparent');
+  assert.equal(migratedV1.repositoryTitle, '仓库');
+  assert.equal(migratedV1.repositoryDescription, '代码、工具与项目归档。');
   assert.deepEqual(migratedV1.homeContent, { articleLimit: 4, galleryLimit: 6, articleSurfaceOpacity: 0.94, gallerySurfaceOpacity: 0 });
   assert.equal(migratedV1.profileName, '旧站点名称');
   assert.equal(migratedV1.profileAvatar, legacyAvatar);
   assert.equal(migratedV1.webIcon, legacyAvatar);
   assert.equal('avatar' in migratedV1, false);
+
+  const migratedV7 = settingsSchema.parse({
+    ...migratedV1,
+    version: 7 as const,
+    repositoryTitle: undefined,
+    repositoryDescription: undefined,
+  });
+  assert.equal(migratedV7.version, 10);
+  assert.equal(migratedV7.repositoryTitle, '仓库');
+  assert.equal(migratedV7.repositoryDescription, '代码、工具与项目归档。');
+
   assert.deepEqual(migratedV1.browsing.article, {
     railSide: 'left', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
     showRecentGallery: false, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820,
@@ -158,7 +235,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
       gallery: { side: 'left' as const },
     },
   });
-  assert.equal(migratedV2.version, 7);
+  assert.equal(migratedV2.version, 10);
   assert.equal(migratedV2.profileName, '旧站点名称');
   assert.equal(migratedV2.profileAvatar, legacyAvatar);
   assert.equal(migratedV2.webIcon, legacyAvatar);
@@ -185,14 +262,18 @@ test('migrates legacy settings and persists independent profile and browsing opt
       },
     },
   });
-  assert.equal(migratedV5.version, 7);
+  assert.equal(migratedV5.version, 10);
   assert.equal(migratedV5.footerMode, 'transparent');
   assert.equal(migratedV5.galleryDescription, '项目、作品与视觉记录。');
+  assert.equal(migratedV5.repositoryTitle, '仓库');
+  assert.equal(migratedV5.repositoryDescription, '代码、工具与项目归档。');
   assert.equal(migratedV5.browsing.article.thumbnailColumns, 2);
   assert.equal(migratedV5.browsing.article.thumbnailRows, 3);
 
   const saved = await dataStore.writeSettings({
     ...migratedV1,
+    repositoryTitle: '我的仓库',
+    repositoryDescription: '整理代码、工具和实验项目。',
     footerText: '独立版权名称',
     profileName: '个人名称',
     profileAvatar: '/media/123e4567-e89b-12d3-a456-426614174001.png',
@@ -210,6 +291,8 @@ test('migrates legacy settings and persists independent profile and browsing opt
     },
   });
   assert.equal(saved.footerText, '独立版权名称');
+  assert.equal(saved.repositoryTitle, '我的仓库');
+  assert.equal(saved.repositoryDescription, '整理代码、工具和实验项目。');
   assert.equal(saved.profileName, '个人名称');
   assert.equal(saved.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(saved.webIcon, null);
@@ -221,10 +304,41 @@ test('migrates legacy settings and persists independent profile and browsing opt
 
   const persisted = await dataStore.readSettings();
   assert.equal(persisted.footerText, '独立版权名称');
+  assert.equal(persisted.repositoryTitle, '我的仓库');
+  assert.equal(persisted.repositoryDescription, '整理代码、工具和实验项目。');
   assert.equal(persisted.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(persisted.webIcon, null);
   assert.equal(persisted.browsing.article.railWidth, 420);
   assert.equal(persisted.browsing.gallery.recentGalleryLimit, 3);
+});
+
+test('preserves omitted settings during partial top-level and nested saves', async () => {
+  const before = await dataStore.readSettings();
+
+  const topLevel = await dataStore.writeSettings({
+    version: 1,
+    siteName: '部分更新站点',
+  });
+  assert.equal(topLevel.siteName, '部分更新站点');
+  assert.equal(topLevel.footerText, before.footerText);
+  assert.equal(topLevel.repositoryDescription, before.repositoryDescription);
+  assert.deepEqual(topLevel.homeContent, before.homeContent);
+  assert.deepEqual(topLevel.browsing, before.browsing);
+
+  const nested = await dataStore.writeSettings({
+    repositoryAppearance: { showRecentUpdates: false },
+  });
+  assert.equal(nested.siteName, '部分更新站点');
+  assert.equal(nested.repositoryAppearance.showRecentUpdates, false);
+  assert.equal(nested.repositoryAppearance.showFileMetadata, before.repositoryAppearance.showFileMetadata);
+  assert.equal(nested.repositoryAppearance.directoryLayout, before.repositoryAppearance.directoryLayout);
+  assert.equal(nested.repositoryAppearance.surfaceOpacity, before.repositoryAppearance.surfaceOpacity);
+  assert.deepEqual(nested.browsing, before.browsing);
+
+  const persisted = await dataStore.readSettings();
+  assert.equal(persisted.siteName, '部分更新站点');
+  assert.equal(persisted.repositoryAppearance.showRecentUpdates, false);
+  assert.equal(persisted.repositoryAppearance.showDescriptions, before.repositoryAppearance.showDescriptions);
 });
 
 test('rejects stale post saves and duplicate slugs', async () => {
@@ -271,32 +385,61 @@ test('stores only a password digest and verifies credentials', async () => {
   assert.equal(await verifyPassword('wrong-password'), false);
 });
 
-test('stores and deletes gallery metadata', async () => {
-  const item = await dataStore.addGalleryItem({
-    url: '/media/123e4567-e89b-12d3-a456-426614174000.webp',
+test('stores gallery files under sequential identifiers without reusing deleted IDs', async () => {
+  const firstTemporary = path.join(dataStore.paths.tmp, '第一张.png');
+  await writeFile(firstTemporary, png);
+  const first = await dataStore.addGalleryItem({
+    temporaryPath: firstTemporary,
+    originalFilename: '第一张.png',
     title: '测试图片',
     description: '画廊说明',
+    width: 1,
+    height: 1,
   });
 
-  assert.equal((await dataStore.listGallery())[0]?.title, '测试图片');
+  assert.equal(first.id, '00000001');
+  assert.equal(first.originalFilename, '第一张.png');
+  assert.equal(first.url, '/media/gallery/00000001/%E7%AC%AC%E4%B8%80%E5%BC%A0.png');
   assert.deepEqual((await dataStore.listGallery())[0]?.cardFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.cardAspectRatio, '4:3');
   assert.deepEqual((await dataStore.listGallery())[0]?.thumbnailFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.thumbnailAspectRatio, '1:1');
-  assert.equal((await dataStore.deleteGalleryItem(item.id))?.id, item.id);
-  assert.deepEqual(await dataStore.listGallery(), []);
+  assert.deepEqual(await readFile(dataStore.galleryFilePath(first)), png);
+  assert.equal((await dataStore.deleteGalleryItem(first.id))?.id, first.id);
+
+  const secondTemporary = path.join(dataStore.paths.tmp, '第二张.png');
+  await writeFile(secondTemporary, png);
+  const second = await dataStore.addGalleryItem({ temporaryPath: secondTemporary, originalFilename: '第二张.png', title: '第二张', description: '' });
+  assert.equal(second.id, '00000002');
+  await dataStore.deleteGalleryItem(second.id);
+});
+
+test('allocates unique gallery IDs for concurrent uploads', async () => {
+  const uploads = await Promise.all(Array.from({ length: 4 }, async (_, index) => {
+    const temporaryPath = path.join(dataStore.paths.tmp, `concurrent-${index}.png`);
+    await writeFile(temporaryPath, png);
+    return dataStore.addGalleryItem({ temporaryPath, originalFilename: `同名-${index}.png`, title: `并发 ${index}`, description: '' });
+  }));
+  assert.equal(new Set(uploads.map((item) => item.id)).size, uploads.length);
+  await Promise.all(uploads.map((item) => dataStore.deleteGalleryItem(item.id)));
 });
 
 test('updates gallery metadata without changing media fields', async () => {
+  const temporaryPath = path.join(dataStore.paths.tmp, '原图.png');
+  await writeFile(temporaryPath, png);
   const item = await dataStore.addGalleryItem({
-    url: '/media/123e4567-e89b-12d3-a456-426614174001.webp',
+    temporaryPath,
+    originalFilename: '原图.png',
     title: '原始标题',
     description: '原始说明',
+    width: 1,
+    height: 1,
   });
 
   const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
   assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
   assert.equal((await dataStore.getGalleryItem(item.id))?.url, item.url);
+  assert.equal((await dataStore.getGalleryItem(item.id))?.originalFilename, '原图.png');
   await dataStore.deleteGalleryItem(item.id);
 });
 
@@ -331,26 +474,26 @@ test('imports ZIP images once and rewrites repeated relative links', async () =>
     { name: 'post/article.md', source: '---\ntitle: ZIP Article\n---\n![one](../images/photo.png)\n\n![two](../images/photo.png)\n' },
     { name: 'images/photo.png', source: png },
   ]));
-  const mediaBefore = new Set(await readdir(dataStore.paths.media));
+  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
 
   const post = await importPostFile(file, 'article.zip');
   const urls = [...post.markdown.matchAll(/\/media\/[a-f0-9-]+\.png/g)].map((match) => match[0]);
   assert.equal(post.status, 'draft');
   assert.equal(urls.length, 2);
   assert.equal(urls[0], urls[1]);
-  const mediaAfter = (await readdir(dataStore.paths.media)).filter((name) => !mediaBefore.has(name));
+  const mediaAfter = (await readdir(dataStore.paths.markdownMedia)).filter((name) => !mediaBefore.has(name));
   assert.equal(mediaAfter.length, 1);
 
   await Promise.all([
     dataStore.deletePost(post.id),
-    ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.media, name))),
+    ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.markdownMedia, name))),
     unlink(file),
   ]);
 });
 
 test('rejects unsafe, duplicate, and spoofed ZIP entries without residue', async () => {
   const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
-  const mediaBefore = new Set(await readdir(dataStore.paths.media));
+  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
   const cases = [
     { name: 'invalid.zip', source: Buffer.from('not a zip'), error: /ZIP 文件无效/ },
     { name: 'traversal.zip', source: createZip([{ name: '../article.md', source: '# unsafe' }]), error: /路径穿越/ },
@@ -368,7 +511,373 @@ test('rejects unsafe, duplicate, and spoofed ZIP entries without residue', async
   }
 
   assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
-  assert.deepEqual(new Set(await readdir(dataStore.paths.media)), mediaBefore);
+  assert.deepEqual(new Set(await readdir(dataStore.paths.markdownMedia)), mediaBefore);
+});
+
+test('validates cross-platform gallery filenames without renaming safe names', () => {
+  assert.equal(validateGalleryFilename('夏日 照片.PNG', 'image/png'), '夏日 照片.PNG');
+  assert.equal(validateGalleryFilename('archive.photo.jpeg', 'image/jpeg'), 'archive.photo.jpeg');
+  for (const filename of ['../photo.png', '..\\photo.png', 'CON.png', 'name?.png', 'trailing .png ', '.']) {
+    assert.throws(() => validateGalleryFilename(filename, 'image/png'), /文件名无效/);
+  }
+  assert.throws(() => validateGalleryFilename('photo.jpg', 'image/png'), /扩展名不一致/);
+});
+
+test('migrates legacy storage without rewriting content or security data', async () => {
+  const legacyRoot = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-legacy-'));
+  const legacyStore = new DataStore(legacyRoot);
+  const legacyId = '123e4567-e89b-42d3-a456-426614174000';
+  const mediaName = '123e4567-e89b-42d3-a456-426614174001.png';
+  const postId = '123e4567-e89b-42d3-a456-426614174002';
+  const postSource = Buffer.from(`---\nid: ${postId}\nslug: legacy-post\ntitle: 旧文章\nexcerpt: 保持原始字节\ndate: 2026-07-01\nupdatedAt: 2026-07-01T00:00:00.000Z\nstatus: published\ntags: []\n---\r\n正文 ![](/media/${mediaName})\r\n`, 'utf8');
+  const adminSource = '{"salt":"unchanged","digest":"unchanged"}\n';
+  const sessionSource = '{"csrfToken":"unchanged"}\n';
+
+  try {
+    await Promise.all([
+      mkdir(path.join(legacyRoot, 'posts'), { recursive: true }),
+      mkdir(path.join(legacyRoot, 'media'), { recursive: true }),
+      mkdir(path.join(legacyRoot, 'sessions'), { recursive: true }),
+      mkdir(path.join(legacyRoot, 'tmp'), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(path.join(legacyRoot, 'posts', `${postId}.md`), postSource),
+      writeFile(path.join(legacyRoot, 'media', mediaName), png),
+      writeFile(path.join(legacyRoot, 'gallery.json'), `${JSON.stringify([{ id: legacyId, url: `/media/${mediaName}`, title: '旧画廊', description: '', createdAt: '2026-07-02T00:00:00.000Z' }], null, 2)}\n`),
+      writeFile(path.join(legacyRoot, '.initialized'), '1'),
+      writeFile(path.join(legacyRoot, 'admin.json'), adminSource),
+      writeFile(path.join(legacyRoot, 'sessions', 'session.json'), sessionSource),
+      writeFile(path.join(legacyRoot, 'tmp', 'keep.tmp'), 'keep'),
+      writeFile(path.join(legacyRoot, 'unknown.sentinel'), 'keep'),
+    ]);
+
+    await legacyStore.initialize();
+    const [postAfter, items, adminAfter, sessionAfter] = await Promise.all([
+      readFile(path.join(legacyStore.paths.posts, `${postId}.md`)),
+      legacyStore.listGallery(),
+      readFile(legacyStore.paths.admin, 'utf8'),
+      readFile(path.join(legacyStore.paths.sessions, 'session.json'), 'utf8'),
+    ]);
+
+    assert.deepEqual(postAfter, postSource);
+    assert.deepEqual(await readFile(path.join(legacyStore.paths.markdownMedia, mediaName)), png);
+    assert.equal(items[0]?.id, '00000001');
+    assert.equal(items[0]?.legacyId, legacyId);
+    assert.equal(items[0]?.originalFilename, mediaName);
+    assert.equal((await legacyStore.getGalleryItem(legacyId))?.id, '00000001');
+    assert.deepEqual(await readFile(legacyStore.galleryFilePath(items[0]!)), png);
+    assert.equal(adminAfter, adminSource);
+    assert.equal(sessionAfter, sessionSource);
+    assert.equal(await readFile(path.join(legacyStore.paths.tmp, 'keep.tmp'), 'utf8'), 'keep');
+    assert.equal(await readFile(path.join(legacyRoot, 'unknown.sentinel'), 'utf8'), 'keep');
+    assert.deepEqual(await readFile(path.join(legacyStore.paths.media, mediaName)), png);
+
+    await legacyStore.initialize();
+    assert.equal((await legacyStore.listGallery())[0]?.id, '00000001');
+  } finally {
+    await rm(legacyRoot, { recursive: true, force: true });
+  }
+});
+
+test('detects migration conflicts before moving legacy posts', async () => {
+  const legacyRoot = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-conflict-'));
+  const legacyStore = new DataStore(legacyRoot);
+  const legacyId = '123e4567-e89b-42d3-a456-426614174010';
+  const mediaName = '123e4567-e89b-42d3-a456-426614174011.png';
+  const postName = '123e4567-e89b-42d3-a456-426614174012.md';
+  const postSource = Buffer.from(`---\nid: 123e4567-e89b-42d3-a456-426614174012\nslug: conflict\ntitle: 冲突验证\nexcerpt: 保留源文件\ndate: 2026-07-01\nupdatedAt: 2026-07-01T00:00:00.000Z\nstatus: published\ntags: []\n---\n正文 ![](/media/${mediaName})\n`);
+  const conflictingTarget = path.join(legacyStore.paths.galleryRoot, '00000001', mediaName);
+  const migratedPost = path.join(legacyStore.paths.posts, postName);
+
+  try {
+    await Promise.all([
+      mkdir(path.join(legacyRoot, 'posts'), { recursive: true }),
+      mkdir(path.join(legacyRoot, 'media'), { recursive: true }),
+      mkdir(path.dirname(conflictingTarget), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(path.join(legacyRoot, 'posts', postName), postSource),
+      writeFile(path.join(legacyRoot, 'media', mediaName), png),
+      writeFile(path.join(legacyRoot, 'gallery.json'), `${JSON.stringify([{ id: legacyId, url: `/media/${mediaName}`, title: '冲突图片', description: '', createdAt: '2026-07-02T00:00:00.000Z' }], null, 2)}\n`),
+      writeFile(conflictingTarget, 'conflict'),
+    ]);
+
+    await assert.rejects(legacyStore.initialize(), /存储迁移目标冲突/);
+    assert.deepEqual(await readFile(path.join(legacyRoot, 'posts', postName)), postSource);
+    await assert.rejects(readFile(migratedPost), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+    assert.equal(await readFile(path.join(legacyRoot, 'gallery.json'), 'utf8').then((source) => JSON.parse(source)[0].id), legacyId);
+    assert.equal(await readFile(conflictingTarget, 'utf8'), 'conflict');
+  } finally {
+    await rm(legacyRoot, { recursive: true, force: true });
+  }
+});
+
+test('validates an existing gallery index before moving legacy posts', async () => {
+  const legacyRoot = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-invalid-index-'));
+  const legacyStore = new DataStore(legacyRoot);
+  const postName = '123e4567-e89b-42d3-a456-426614174020.md';
+  const postSource = Buffer.from('legacy post');
+
+  try {
+    await Promise.all([
+      mkdir(path.join(legacyRoot, 'posts'), { recursive: true }),
+      mkdir(legacyStore.paths.galleryRoot, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(path.join(legacyRoot, 'posts', postName), postSource),
+      writeFile(legacyStore.paths.gallery, '{}'),
+    ]);
+
+    await assert.rejects(legacyStore.initialize());
+    assert.deepEqual(await readFile(path.join(legacyRoot, 'posts', postName)), postSource);
+    await assert.rejects(readFile(path.join(legacyStore.paths.posts, postName)), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+  } finally {
+    await rm(legacyRoot, { recursive: true, force: true });
+  }
+});
+
+test('stores and validates code-tools files through the manifest', async () => {
+  assert.equal(validateCodeToolFilename('工具 · 说明.txt'), '工具 · 说明.txt');
+  assert.equal(validateCodeToolFilename('é.txt'), 'é.txt');
+  for (const filename of ['../tool.js', '..\\tool.js', 'CON.txt', 'tool?.js', 'trailing.txt ', '.', 'tool/part']) {
+    assert.throws(() => validateCodeToolFilename(filename), /文件名无效/);
+  }
+
+  const temporaryPath = path.join(dataStore.paths.tmp, 'code-tool.upload');
+  const source = Buffer.from('<script>alert(1)</script>');
+  await writeFile(temporaryPath, source);
+  const item = await dataStore.addCodeTool({
+    temporaryPath,
+    originalFilename: '工具 · 说明.txt',
+    size: source.length,
+    mimeType: 'text/plain',
+    mimeSource: 'declared',
+    sha256: '0'.repeat(64),
+  });
+
+  assert.match(item.id, /^[a-f0-9-]{36}$/);
+  assert.equal((await dataStore.listCodeTools()).length, 1);
+  assert.deepEqual(await readFile(dataStore.codeToolFilePath(item)), source);
+  assert.equal((await dataStore.getCodeTool(item.id))?.originalFilename, '工具 · 说明.txt');
+  assert.equal((await dataStore.deleteCodeTool(item.id))?.id, item.id);
+  assert.equal(await dataStore.getCodeTool(item.id), null);
+  await assert.rejects(readFile(dataStore.codeToolFilePath(item)), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+});
+
+test('accepts one multipart code-tools file without hitting a parts limit', async () => {
+  const boundary = '----cocynoric-code-tool-test';
+  const source = Buffer.from('single multipart upload');
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="tool.txt"\r\nContent-Type: text/plain\r\n\r\n`),
+    source,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const request = Object.assign(new PassThrough(), {
+    headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-length': String(body.length),
+    },
+  }) as Parameters<typeof receiveCodeTool>[0];
+
+  const receivedPromise = receiveCodeTool(request);
+  request.end(body);
+  const received = await receivedPromise;
+
+  try {
+    assert.equal(received.originalFilename, 'tool.txt');
+    assert.equal(received.size, source.length);
+    assert.equal(received.mimeType, 'text/plain');
+    assert.equal(received.mimeSource, 'declared');
+    assert.equal(received.sha256, createHash('sha256').update(source).digest('hex'));
+    assert.deepEqual(await readFile(received.temporaryPath), source);
+  } finally {
+    await unlink(received.temporaryPath).catch(() => undefined);
+  }
+});
+
+test('preserves nested paths for multipart code-tools project folders', async () => {
+  const received = await createProjectUpload({
+    projectName: 'nested-folder-project',
+    mode: 'folder',
+    files: [
+      { name: 'selected-root/src/nested/tool.ts', source: 'export const answer = 42;\n', contentType: 'text/typescript' },
+      { name: 'selected-root/README.md', source: '# Nested project\n', contentType: 'text/markdown' },
+    ],
+  });
+
+  assert.deepEqual(received.project.files.map((file) => file.relativePath).sort(), ['README.md', 'src/nested/tool.ts']);
+  const project = await dataStore.addCodeToolProject(received);
+  assert.deepEqual(await readFile(dataStore.codeToolProjectFilePath(project, 'src/nested/tool.ts'), 'utf8'), 'export const answer = 42;\n');
+
+  const root = await dataStore.codeToolProjectListing(project.slug);
+  assert.deepEqual(root?.entries.map((entry) => ({ name: entry.name, kind: entry.kind })), [
+    { name: 'README.md', kind: 'file' },
+    { name: 'src', kind: 'directory' },
+  ]);
+  const nested = await repositoryTree('code-tools', `${project.slug}/src/nested`);
+  assert.deepEqual(nested.entries.map((entry) => entry.name), ['tool.ts']);
+  assert.equal(nested.entries[0]?.download, true);
+
+  assert.equal((await dataStore.deleteCodeToolProject(project.slug))?.id, project.id);
+  assert.equal(await dataStore.getCodeToolProject(project.slug), null);
+  await assert.rejects(readFile(dataStore.codeToolProjectFilePath(project, 'README.md')), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+});
+
+test('rejects conflicting multipart project paths without residue', async () => {
+  const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
+  await assert.rejects(createProjectUpload({
+    projectName: 'duplicate-folder-project',
+    mode: 'folder',
+    files: [
+      { name: 'selected-root/src/Tool.ts', source: 'one' },
+      { name: 'selected-root/src/tool.ts', source: 'two' },
+    ],
+  }), /重复路径/);
+  assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
+});
+
+test('extracts and preserves ZIP code-tools projects safely', async () => {
+  const archive = createZip([
+    { name: 'archive-root/README.md', source: '# Archive\n' },
+    { name: 'archive-root/src/nested/tool.js', source: 'export default 1;\n' },
+  ]);
+  const extracted = await createProjectUpload({
+    projectName: 'extracted-zip-project',
+    mode: 'zip',
+    files: [{ name: 'archive.zip', source: archive, contentType: 'application/zip' }],
+  });
+  assert.deepEqual(extracted.project.files.map((file) => file.relativePath).sort(), ['README.md', 'src/nested/tool.js']);
+  const extractedProject = await dataStore.addCodeToolProject(extracted);
+  assert.equal(await readFile(dataStore.codeToolProjectFilePath(extractedProject, 'src/nested/tool.js'), 'utf8'), 'export default 1;\n');
+
+  const kept = await createProjectUpload({
+    projectName: 'kept-zip-project',
+    mode: 'zip',
+    zipMode: 'keep',
+    files: [{ name: 'source.zip', source: archive, contentType: 'application/zip' }],
+  });
+  assert.deepEqual(kept.project.files.map((file) => file.relativePath), ['source.zip']);
+  const keptProject = await dataStore.addCodeToolProject(kept);
+  assert.deepEqual(await readFile(dataStore.codeToolProjectFilePath(keptProject, 'source.zip')), archive);
+
+  await Promise.all([
+    dataStore.deleteCodeToolProject(extractedProject.slug),
+    dataStore.deleteCodeToolProject(keptProject.slug),
+  ]);
+});
+
+test('rejects invalid and empty extracted ZIP projects without residue', async () => {
+  const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
+  await assert.rejects(createProjectUpload({
+    projectName: 'invalid-zip-project',
+    mode: 'zip',
+    zipMode: 'keep',
+    files: [{ name: 'invalid.zip', source: 'not a zip', contentType: 'application/zip' }],
+  }), /ZIP 文件无效/);
+  await assert.rejects(createProjectUpload({
+    projectName: 'empty-zip-project',
+    mode: 'zip',
+    files: [{ name: 'empty.zip', source: createZip([]), contentType: 'application/zip' }],
+  }), /没有可上传的文件/);
+  assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
+});
+
+test('removes code-tools projects whose physical directory is already missing', async () => {
+  const received = await createProjectUpload({
+    projectName: 'missing-directory-project',
+    mode: 'folder',
+    files: [{ name: 'selected-root/tool.txt', source: 'ghost' }],
+  });
+  const project = await dataStore.addCodeToolProject(received);
+  await rm(dataStore.codeToolProjectRootPath(project), { recursive: true, force: true });
+
+  assert.equal((await dataStore.deleteCodeToolProject(project.slug))?.id, project.id);
+  assert.equal(await dataStore.getCodeToolProject(project.slug), null);
+});
+
+test('initializes an empty code-tools directory when upgrading storage layout v1', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-layout-v1-'));
+  const store = new DataStore(root);
+  try {
+    await Promise.all([
+      mkdir(store.paths.galleryRoot, { recursive: true }),
+      mkdir(store.paths.codeToolsItems, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(store.paths.gallery, `${JSON.stringify({ version: 1, nextId: 1, items: [] })}\n`),
+      writeFile(store.paths.storageLayout, '{"version":1}\n'),
+      writeFile(store.paths.settings, JSON.stringify({
+        version: 9,
+        siteName: '迁移测试',
+        homeTitle: '迁移测试',
+        footerText: '迁移测试',
+        description: '',
+        backgroundImage: null,
+        backgroundPosition: 'center',
+        backgroundOverlay: 0,
+        backgroundBlur: 0,
+        seedColor: '#415f91',
+        contentWidth: 'standard',
+        cardDensity: 'comfortable',
+        bodyFontSize: 16,
+        footerMode: 'transparent',
+        galleryDescription: '',
+        repositoryTitle: '仓库',
+        repositoryDescription: '',
+        repositoryAppearance: {
+          backgroundImage: null,
+          headingMinHeight: 220,
+          titleAlign: 'left',
+          contentOffset: 0,
+          surfaceOpacity: 1,
+          directoryLayout: 'grid',
+          showDescriptions: true,
+          showItemCounts: true,
+          showFileMetadata: true,
+        },
+        profileName: '迁移测试',
+        profileAvatar: null,
+        webIcon: null,
+        homeHero: { minHeight: 680, titleAlign: 'left', contentOffset: 0 },
+        homeContent: { articleLimit: 4, galleryLimit: 6, articleSurfaceOpacity: 1, gallerySurfaceOpacity: 1 },
+        browsing: {
+          article: { railSide: 'left', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4, showRecentGallery: false, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820 },
+          gallery: { railSide: 'right', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4, showRecentGallery: true, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, mediaWidth: 705, portraitMaxHeight: 880 },
+        },
+      }) + '\n'),
+    ]);
+    await store.initialize();
+    assert.deepEqual(JSON.parse(await readFile(store.paths.storageLayout, 'utf8')), { version: 2 });
+    assert.deepEqual(JSON.parse(await readFile(store.paths.codeToolsIndex, 'utf8')), { version: 2, items: [], projects: [] });
+    assert.deepEqual(await readdir(store.paths.codeToolsItems), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('lists repository areas and maps legacy content into project trees', async () => {
+  const overview = await repositoryOverview();
+  assert.deepEqual(overview.areas.map((area) => area.key), ['markdown', 'gallery', 'code-tools']);
+  assert.equal(overview.areas.find((area) => area.key === 'markdown')?.entryCount, (await dataStore.listPosts()).length);
+
+  const markdownRoot = await repositoryTree('markdown');
+  const welcome = markdownRoot.entries.find((entry) => entry.name === 'welcome');
+  assert.equal(welcome?.kind, 'directory');
+  assert.equal(markdownRoot.parentPath, null);
+
+  const article = await repositoryTree('markdown', 'welcome');
+  assert.equal(article.parentPath, '');
+  assert.deepEqual(article.entries.map((entry) => ({ name: entry.name, icon: entry.icon, href: entry.href })), [
+    { name: '正文.md', icon: 'markdown', href: '/posts/welcome' },
+  ]);
+});
+
+test('rejects private, malformed, and missing repository paths', async () => {
+  await assert.rejects(repositoryTree('settings'), (error: Error & { status?: number }) => error.status === 404);
+  for (const pathname of ['../settings', 'folder\\file', '/absolute', 'folder//file', 'folder/./file', 'folder file']) {
+    await assert.rejects(repositoryTree('markdown', pathname), (error: Error & { status?: number }) => error.status === 400);
+  }
+  await assert.rejects(repositoryTree('markdown', 'missing-article'), (error: Error & { status?: number }) => error.status === 404);
 });
 
 test('matches gallery titles without searching descriptions', () => {
@@ -406,9 +915,17 @@ test('validates customization boundaries', () => {
   const migrated = settingsSchema.parse(settings);
   assert.equal(migrated.footerMode, 'transparent');
   assert.equal(migrated.galleryDescription, '项目、作品与视觉记录。');
+  assert.equal(migrated.repositoryTitle, '仓库');
+  assert.equal(migrated.repositoryDescription, '代码、工具与项目归档。');
   const current = settingsSchema.parse(settings);
   assert.equal(settingsSchema.safeParse({ ...current, footerMode: 'surface' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, galleryDescription: 'x'.repeat(241) }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryTitle: '' }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryTitle: ' '.repeat(121) }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryTitle: 'x'.repeat(120) }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: '' }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(240) }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(241) }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: 'https://example.com/avatar.png' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, webIcon: '/media/icon.svg' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: null, webIcon: null }).success, true);

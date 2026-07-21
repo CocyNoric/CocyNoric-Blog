@@ -33,6 +33,7 @@ export function SiteHeader() {
         <nav className="main-nav" aria-label="主导航">
           <Link to="/articles">文章</Link>
           <Link to="/gallery">画廊</Link>
+          <Link to="/repository">仓库</Link>
         </nav>
       </div>
       <div className="header-actions">

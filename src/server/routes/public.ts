@@ -3,8 +3,53 @@ import { dataStore } from '../dataStore.js';
 import { renderMarkdown } from '../markdown.js';
 import { createThemeTokens } from '../theme.js';
 import { matchesGalleryTitle } from '../../shared/search.js';
+import { serveCodeToolDownload, serveCodeToolProjectDownload } from '../codeTools.js';
+import { repositoryOverview, repositoryTree } from '../repositoryStore.js';
 
 export const publicRouter = Router();
+
+function publicCodeTool(item: Awaited<ReturnType<typeof dataStore.listCodeTools>>[number]) {
+  return {
+    ...item,
+    downloadUrl: `/api/repository/code-tools/${item.id}/download/${encodeURIComponent(item.originalFilename)}`,
+  };
+}
+
+publicRouter.get('/repository', async (_req, res, next) => {
+  try {
+    res.json(await repositoryOverview());
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRouter.get('/repository/tree/:area', async (req, res, next) => {
+  try {
+    const pathname = typeof req.query.path === 'string' ? req.query.path : undefined;
+    res.json(await repositoryTree(req.params.area, pathname));
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRouter.get('/repository/code-tools', async (_req, res, next) => {
+  try {
+    res.json((await dataStore.listCodeTools()).map(publicCodeTool));
+  } catch (error) {
+    next(error);
+  }
+});
+
+publicRouter.get('/repository/code-tools/projects/:slug/download/*path', async (req, res, next) => {
+  try { await serveCodeToolProjectDownload(req, res); } catch (error) { next(error); }
+});
+publicRouter.get('/repository/code-tools/:id/download/:filename', async (req, res, next) => {
+  try {
+    await serveCodeToolDownload(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 publicRouter.get('/settings', async (_req, res, next) => {
   try {

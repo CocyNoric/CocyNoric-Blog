@@ -48,8 +48,8 @@ const browsingSchema = z.object({
 
 const sharedSettingsFields = {
   siteName: z.string().trim().min(1).max(80),
-  homeTitle: z.string().trim().min(1).max(120).default('CocyNoric‘s Blog'),
-  footerText: z.string().trim().min(1).max(120).default('CocyNoric‘s Blog'),
+  homeTitle: z.string().trim().min(1).max(120).default("CocyNoric's Blog"),
+  footerText: z.string().trim().min(1).max(120).default("CocyNoric's Blog"),
   description: z.string().trim().max(240),
   backgroundImage: localMediaPath.nullable(),
   backgroundPosition: z.enum(['center', 'top', 'bottom']),
@@ -162,6 +162,87 @@ const settingsV7Schema = z.object({
   browsing: browsingSchema,
 });
 
+const legacyRepositoryAppearanceSchema = z.object({
+  backgroundImage: localMediaPath.nullable(),
+  headingMinHeight: z.number().int().min(200).max(560),
+  titleAlign: z.enum(['left', 'center']),
+  contentOffset: z.number().int().min(-120).max(120),
+  surfaceOpacity: z.number().finite().min(0.55).max(1),
+  directoryLayout: z.enum(['grid', 'list']),
+  showDescriptions: z.boolean(),
+  showItemCounts: z.boolean(),
+  showFileMetadata: z.boolean(),
+});
+
+const repositoryAppearanceSchema = legacyRepositoryAppearanceSchema.extend({
+  showRecentUpdates: z.boolean(),
+});
+
+export const defaultRepositoryAppearance = {
+  backgroundImage: null,
+  headingMinHeight: 220,
+  titleAlign: 'left',
+  contentOffset: 0,
+  surfaceOpacity: 1,
+  directoryLayout: 'grid',
+  showDescriptions: true,
+  showItemCounts: true,
+  showFileMetadata: true,
+  showRecentUpdates: true,
+} as const;
+
+const settingsV8Schema = z.object({
+  version: z.literal(8),
+  ...sharedSettingsFields,
+  footerMode: z.enum(['transparent', 'primary']),
+  galleryDescription: z.string().trim().max(240),
+  repositoryTitle: z.string().trim().min(1).max(120),
+  repositoryDescription: z.string().trim().max(240),
+  profileName: z.string().trim().min(1).max(80),
+  profileAvatar: localMediaPath.nullable(),
+  webIcon: localMediaPath.nullable(),
+  homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  homeContent: homeContentSchema,
+  browsing: browsingSchema,
+});
+
+const settingsV9Schema = z.object({
+  version: z.literal(9),
+  ...sharedSettingsFields,
+  footerMode: z.enum(['transparent', 'primary']),
+  galleryDescription: z.string().trim().max(240),
+  repositoryTitle: z.string().trim().min(1).max(120),
+  repositoryDescription: z.string().trim().max(240),
+  repositoryAppearance: legacyRepositoryAppearanceSchema,
+  profileName: z.string().trim().min(1).max(80),
+  profileAvatar: localMediaPath.nullable(),
+  webIcon: localMediaPath.nullable(),
+  homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  homeContent: homeContentSchema,
+  browsing: browsingSchema,
+});
+
+const settingsV10Schema = z.object({
+  version: z.literal(10),
+  ...sharedSettingsFields,
+  footerMode: z.enum(['transparent', 'primary']),
+  galleryDescription: z.string().trim().max(240),
+  repositoryTitle: z.string().trim().min(1).max(120),
+  repositoryDescription: z.string().trim().max(240),
+  repositoryAppearance: repositoryAppearanceSchema,
+  profileName: z.string().trim().min(1).max(80),
+  profileAvatar: localMediaPath.nullable(),
+  webIcon: localMediaPath.nullable(),
+  homeHero: homeHeroSchema.default({ minHeight: 680, titleAlign: 'left', contentOffset: 0 }),
+  homeContent: homeContentSchema,
+  browsing: browsingSchema,
+});
+
+const defaultRepositorySettings = {
+  repositoryTitle: '仓库',
+  repositoryDescription: '代码、工具与项目归档。',
+};
+
 const defaultDetailRail = {
   recentPostsLimit: 4,
   thumbnailLimit: 6,
@@ -181,8 +262,35 @@ function upgradeLegacySettings(legacy: z.infer<typeof settingsV2Schema>) {
   });
 }
 
+function upgradeV9Settings(legacy: z.infer<typeof settingsV9Schema>) {
+  return settingsV10Schema.parse({
+    ...legacy,
+    version: 10,
+    repositoryAppearance: {
+      ...legacy.repositoryAppearance,
+      showRecentUpdates: legacy.repositoryAppearance.showFileMetadata,
+    },
+  });
+}
+
+function upgradeV8Settings(legacy: z.infer<typeof settingsV8Schema>) {
+  return upgradeV9Settings(settingsV9Schema.parse({
+    ...legacy,
+    version: 9,
+    repositoryAppearance: defaultRepositoryAppearance,
+  }));
+}
+
+function upgradeV7Settings(legacy: z.infer<typeof settingsV7Schema>) {
+  return upgradeV8Settings(settingsV8Schema.parse({
+    ...legacy,
+    version: 8,
+    ...defaultRepositorySettings,
+  }));
+}
+
 function upgradeV6Settings(legacy: z.infer<typeof settingsV6Schema>) {
-  return settingsV7Schema.parse({
+  return upgradeV7Settings(settingsV7Schema.parse({
     ...legacy,
     version: 7,
     homeContent: {
@@ -191,7 +299,7 @@ function upgradeV6Settings(legacy: z.infer<typeof settingsV6Schema>) {
       articleSurfaceOpacity: 0.94,
       gallerySurfaceOpacity: 0,
     },
-  });
+  }));
 }
 
 function upgradeV5Settings(legacy: z.infer<typeof settingsV5Schema>) {
@@ -261,7 +369,10 @@ function upgradeV3Settings(legacy: z.infer<typeof settingsV3Schema>) {
 }
 
 export const settingsSchema = z.union([
-  settingsV7Schema,
+  settingsV10Schema,
+  settingsV9Schema.transform(upgradeV9Settings),
+  settingsV8Schema.transform(upgradeV8Settings),
+  settingsV7Schema.transform(upgradeV7Settings),
   settingsV6Schema.transform(upgradeV6Settings),
   settingsV5Schema.transform(upgradeV5Settings),
   settingsV4Schema.transform(upgradeV4Settings),
@@ -320,7 +431,7 @@ const thumbnailFocusSchema = z.object({
 
 const defaultThumbnailFocus = { x: 0.5, y: 0.5, size: 1 };
 
-const galleryItemBaseSchema = z.object({
+const legacyGalleryItemBaseSchema = z.object({
   id: z.string().uuid(),
   url: localMediaPath,
   title: z.string().trim().min(1).max(120),
@@ -334,7 +445,32 @@ const galleryItemBaseSchema = z.object({
   height: z.number().int().positive().optional(),
 });
 
-export const galleryItemSchema = galleryItemBaseSchema.transform((item) => {
+export const galleryIdSchema = z.string().regex(/^\d{8}$/);
+
+const galleryFilenameSchema = z.string()
+  .min(1)
+  .max(255)
+  .regex(/^[^ -<>:"/\\|?*]+$/)
+  .refine((value) => value !== '.' && value !== '..' && !/[. ]$/.test(value))
+  .refine((value) => !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value));
+
+const galleryItemBaseSchema = z.object({
+  id: galleryIdSchema,
+  legacyId: z.string().uuid().optional(),
+  url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
+  originalFilename: galleryFilenameSchema,
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(240),
+  createdAt: z.string().datetime(),
+  cardFocus: thumbnailFocusSchema.optional(),
+  cardAspectRatio: thumbnailAspectRatioSchema.optional(),
+  thumbnailFocus: thumbnailFocusSchema.optional(),
+  thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+});
+
+function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSchema> | z.infer<typeof galleryItemBaseSchema>>(item: T) {
   const hasSplitConfiguration = item.cardFocus !== undefined || item.cardAspectRatio !== undefined;
   const legacyFocus = item.thumbnailFocus ?? defaultThumbnailFocus;
   const legacyAspectRatio = item.thumbnailAspectRatio ?? '4:3';
@@ -350,6 +486,15 @@ export const galleryItemSchema = galleryItemBaseSchema.transform((item) => {
       ? (item.thumbnailAspectRatio ?? '1:1')
       : '1:1',
   };
+}
+
+export const legacyGalleryItemSchema = legacyGalleryItemBaseSchema.transform(normalizeGalleryItem);
+export const galleryItemSchema = galleryItemBaseSchema.transform(normalizeGalleryItem);
+
+export const galleryIndexSchema = z.object({
+  version: z.literal(1),
+  nextId: z.number().int().min(1).max(100_000_000),
+  items: galleryItemSchema.array(),
 });
 
 export const galleryInputSchema = z.object({
@@ -381,6 +526,64 @@ export const galleryUploadInputSchema = z.object({
   thumbnailFocus: { x: thumbnailFocusX, y: thumbnailFocusY, size: thumbnailFocusSize },
 }));
 
+const codeToolFilenameSchema = z.string()
+  .min(1)
+  .max(255)
+  .regex(/^[^ -<>:"/\\|?*]+$/)
+  .refine((value) => value === value.normalize('NFC'))
+  .refine((value) => value !== '.' && value !== '..' && !/[. ]$/.test(value))
+  .refine((value) => !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value))
+  .refine((value) => new TextEncoder().encode(value).byteLength <= 240);
+
+export const codeToolItemSchema = z.object({
+  id: z.string().uuid(),
+  originalFilename: codeToolFilenameSchema,
+  size: z.number().int().min(0).max(20 * 1024 * 1024),
+  mimeType: z.string().regex(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i).max(127).nullable(),
+  mimeSource: z.enum(['detected', 'declared']).nullable(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  createdAt: z.string().datetime(),
+});
+
+const codeToolProjectSlugSchema = z.string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+
+export const codeToolProjectFileSchema = z.object({
+  id: z.string().uuid(),
+  relativePath: z.string().min(1).max(1024),
+  size: z.number().int().min(0).max(20 * 1024 * 1024),
+  mimeType: z.string().regex(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i).max(127).nullable(),
+  mimeSource: z.enum(['detected', 'declared']).nullable(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const codeToolProjectSchema = z.object({
+  id: z.string().uuid(),
+  slug: codeToolProjectSlugSchema,
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(240),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  fileCount: z.number().int().min(0).max(1000),
+  totalBytes: z.number().int().min(0).max(100 * 1024 * 1024),
+  files: codeToolProjectFileSchema.array().max(1000),
+});
+
+export const legacyCodeToolsIndexSchema = z.object({
+  version: z.literal(1),
+  items: codeToolItemSchema.array().max(1000),
+});
+
+export const codeToolsIndexSchema = z.object({
+  version: z.literal(2),
+  items: codeToolItemSchema.array().max(1000),
+  projects: codeToolProjectSchema.array().max(1000),
+});
+
 export const loginSchema = z.object({
   password: z.string().min(1).max(512),
 });
@@ -394,4 +597,9 @@ export type ThumbnailAspectRatio = z.infer<typeof thumbnailAspectRatioSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
+export type GalleryIndex = z.infer<typeof galleryIndexSchema>;
 export type GalleryInput = z.infer<typeof galleryInputSchema>;
+export type CodeToolItem = z.infer<typeof codeToolItemSchema>;
+export type CodeToolsIndex = z.infer<typeof codeToolsIndexSchema>;
+export type CodeToolProjectFile = z.infer<typeof codeToolProjectFileSchema>;
+export type CodeToolProject = z.infer<typeof codeToolProjectSchema>;

@@ -1,24 +1,18 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { AdminPost } from '../../../shared/types.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
-import { EditIcon, ImageIcon, TrashIcon } from '../../components/Icons.js';
+import { EditIcon, TrashIcon } from '../../components/Icons.js';
+import { PostImportControl } from '../../components/PostImportControl.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
-const acceptedImports = new Set(['.md', '.markdown', '.zip']);
-const importLimit = 64 * 1024 * 1024;
-
 export function PostsPage() {
-  const navigate = useNavigate();
   const { csrfToken } = useAuth();
   const [posts, setPosts] = useState<AdminPost[]>([]);
   const [pendingDelete, setPendingDelete] = useState<AdminPost | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const dragDepth = useRef(0);
   const [error, setError] = useState('');
 
   const load = () => api.adminPosts().then(setPosts).catch((cause: Error) => setError(cause.message));
@@ -38,55 +32,12 @@ export function PostsPage() {
     }
   };
 
-  const importFile = async (file?: File) => {
-    if (!file) return;
-    const extension = `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`;
-    if (!acceptedImports.has(extension)) { setError('仅支持 .md、.markdown 或 .zip 文件'); return; }
-    const limit = extension === '.zip' ? importLimit : 1024 * 1024;
-    if (file.size > limit) { setError(extension === '.zip' ? 'ZIP 文件不能超过 64 MB' : 'Markdown 文件不能超过 1 MB'); return; }
-    setImporting(true); setError('');
-    try {
-      const post = await api.importPost(file, csrfToken);
-      navigate(`/admin/posts/${post.id}`);
-    } catch (cause) {
-      setError((cause as Error).message);
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const dragEnter = (event: DragEvent) => {
-    event.preventDefault();
-    if (!event.dataTransfer.types.includes('Files')) return;
-    dragDepth.current += 1;
-    setDragging(true);
-  };
-
   return <main id="main" className="page-shell admin-shell">
     <AdminNav />
     <div className="admin-heading">
       <div><p className="eyebrow">内容管理</p><h1>文章</h1><p>编辑 Markdown、预览公式并控制发布状态。</p></div>
       <div className="heading-actions">
-        <label
-          className={`button secondary-button import-control${dragging ? ' drag-active' : ''}`}
-          onDragEnter={dragEnter}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            event.preventDefault();
-            dragDepth.current = Math.max(0, dragDepth.current - 1);
-            if (!dragDepth.current) setDragging(false);
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            dragDepth.current = 0;
-            setDragging(false);
-            if (event.dataTransfer.files.length !== 1) setError('每次只能导入一个文章文件');
-            else void importFile(event.dataTransfer.files[0]);
-          }}
-        >
-          <ImageIcon />{importing ? '正在导入…' : '导入文章'}
-          <input type="file" accept=".md,.markdown,.zip" disabled={importing} onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ''; }} />
-        </label>
+        <PostImportControl onError={setError} />
         <Link className="button primary-button" to="/admin/posts/new"><EditIcon />新建文章</Link>
       </div>
     </div>

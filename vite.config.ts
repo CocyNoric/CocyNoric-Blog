@@ -1,5 +1,18 @@
+import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+const projectRoot = process.cwd();
+const runtimeDataDir = path.resolve(process.env.BLOG_DATA_DIR ?? path.join(projectRoot, 'data'));
+
+function isRuntimeDataPath(filePath: string) {
+  const relativePath = path.relative(runtimeDataDir, path.resolve(filePath));
+  return relativePath === '' || (
+    relativePath !== '..'
+    && !relativePath.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relativePath)
+  );
+}
 
 const backendPort = Number.parseInt(process.env.BLOG_PORT ?? '3000', 10);
 const configuredProxyHost = process.env.BLOG_PROXY_HOST ?? '127.0.0.1';
@@ -13,6 +26,9 @@ export default defineConfig({
   server: {
     host: devHost,
     port: devPort,
+    watch: {
+      ignored: isRuntimeDataPath,
+    },
     proxy: {
       '/api': backendTarget,
       '/media': backendTarget,

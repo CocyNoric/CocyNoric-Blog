@@ -387,7 +387,7 @@ async function createImportedPost(source: Buffer, filename: string, images?: Map
       }
       for (const archivePath of new Set(references.map((reference) => reference.archivePath))) {
         const image = images.get(archivePath)!;
-        const saved = await processImageFile(image.temporaryPath);
+        const saved = await processImageFile(image.temporaryPath, 'markdown');
         images.delete(archivePath);
         createdMedia.push(saved.filePath);
         urls.set(archivePath, saved.url);

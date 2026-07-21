@@ -132,7 +132,7 @@ export function GalleryPage() {
         <span className="media-preview gallery-upload-preview">{previewUrl ? <img src={previewUrl} alt="待上传图片预览" /> : <ImageIcon />}</span>
         <span>
           <strong>{file ? file.name : '选择或拖入画廊图片'}</strong>
-          {!file && <small>PNG、JPEG 或 WebP，最大 20 MB；超过 5 MB 自动压缩为 WebP</small>}
+          {!file && <small>PNG、JPEG 或 WebP，最大 20 MB；保留原文件名与格式</small>}
         </span>
       </ImageDropField>
       <div className="gallery-upload-fields">

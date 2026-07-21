@@ -6,11 +6,13 @@ import { HomePage } from './pages/HomePage.js';
 import { ArticlesPage } from './pages/ArticlesPage.js';
 import { PostPage } from './pages/PostPage.js';
 import { PublicGalleryPage } from './pages/PublicGalleryPage.js';
+import { RepositoryPage } from './pages/RepositoryPage.js';
 import { GalleryDetailPage } from './pages/GalleryDetailPage.js';
 import { LoginPage } from './pages/admin/LoginPage.js';
 import { PostsPage } from './pages/admin/PostsPage.js';
 import { EditorPage } from './pages/admin/EditorPage.js';
 import { GalleryPage } from './pages/admin/GalleryPage.js';
+import { AdminRepositoryPage } from './pages/admin/RepositoryPage.js';
 import { useSettings } from './hooks/useSettings.js';
 import { SettingsPage } from './pages/admin/SettingsPage.js';
 
@@ -39,6 +41,8 @@ export function App() {
       <Route index element={<HomePage />} />
       <Route path="articles" element={<ArticlesPage />} />
       <Route path="gallery" element={<PublicGalleryPage />} />
+      <Route path="repository" element={<RepositoryPage />} />
+      <Route path="repository/:directory/*" element={<RepositoryPage />} />
       <Route path="gallery/:id" element={<GalleryDetailPage />} />
       <Route path="posts/:slug" element={<PostPage />} />
       <Route path="admin/login" element={<LoginPage />} />
@@ -47,6 +51,7 @@ export function App() {
         <Route path="admin/posts/new" element={<EditorPage />} />
         <Route path="admin/posts/:id" element={<EditorPage />} />
         <Route path="admin/gallery" element={<GalleryPage />} />
+        <Route path="admin/repository" element={<AdminRepositoryPage />} />
         <Route path="admin/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

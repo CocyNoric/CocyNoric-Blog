@@ -1,4 +1,4 @@
-import type { AdminPost, AuthState, PostSummary, PublicPost, PublicSettings } from '../shared/types.js';
+import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview } from '../shared/types.js';
 import type { GalleryInput, GalleryItem, PostInput, SiteSettings } from '../shared/schemas.js';
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -41,8 +41,11 @@ function writeHeaders(csrfToken: string) {
 
 export const api = {
   settings: () => request<PublicSettings>('/api/settings'),
+  repositoryOverview: () => request<RepositoryOverview>('/api/repository'),
+  repositoryTree: (area: RepositoryAreaKey, pathname = '') => request<RepositoryListing>(`/api/repository/tree/${area}${pathname ? `?path=${encodeURIComponent(pathname)}` : ''}`),
   gallery: (query = '') => request<GalleryItem[]>(`/api/gallery${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   galleryItem: (id: string) => request<GalleryItem>(`/api/gallery/${encodeURIComponent(id)}`),
+  repositoryCodeTools: () => request<PublicCodeTool[]>('/api/repository/code-tools'),
   posts: (query = '') => request<PostSummary[]>(`/api/posts${query}`),
   post: (slug: string) => request<PublicPost>(`/api/posts/${encodeURIComponent(slug)}`),
   authState: () => request<AuthState>('/api/auth/me'),
@@ -55,6 +58,32 @@ export const api = {
     headers: writeHeaders(csrfToken),
   }),
   adminPosts: () => request<AdminPost[]>('/api/admin/posts'),
+  adminCodeTools: () => request<PublicCodeTool[]>('/api/admin/repository/code-tools'),
+  adminCodeToolProjects: () => request<CodeToolAdminProject[]>('/api/admin/repository/code-tools/projects'),
+  adminCodeToolProject: (slug: string, pathname = '') => request<CodeToolProjectListing>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}${pathname ? `?path=${encodeURIComponent(pathname)}` : ''}`),
+  uploadCodeToolProject: (input: { projectName: string; description?: string; mode: 'folder' | 'zip'; zipMode: 'extract' | 'keep'; files: File[] }, csrfToken: string) => {
+    const body = new FormData();
+    body.append('projectName', input.projectName);
+    body.append('description', input.description ?? '');
+    body.append('mode', input.mode);
+    body.append('zipMode', input.zipMode);
+    input.files.forEach((file) => body.append('files', file, input.mode === 'folder' ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : file.name));
+    return request<CodeToolAdminProject>('/api/admin/repository/code-tools/projects', { method: 'POST', headers: writeHeaders(csrfToken), body });
+  },
+  deleteCodeToolProject: (slug: string, csrfToken: string) => request<void>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: writeHeaders(csrfToken) }),
+  uploadCodeTool: (file: File, csrfToken: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<PublicCodeTool>('/api/admin/repository/code-tools', {
+      method: 'POST',
+      headers: writeHeaders(csrfToken),
+      body,
+    });
+  },
+  deleteCodeTool: (id: string, csrfToken: string) => request<void>(`/api/admin/repository/code-tools/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: writeHeaders(csrfToken),
+  }),
   adminPost: (id: string) => request<AdminPost>(`/api/admin/posts/${encodeURIComponent(id)}`),
   preview: (markdown: string, csrfToken: string, signal?: AbortSignal) => request<{ html: string }>('/api/admin/preview', {
     method: 'POST',
@@ -128,7 +157,7 @@ export const api = {
       body,
     });
   },
-  uploadSettingMedia: (kind: 'profileAvatar' | 'webIcon' | 'background', file: File, csrfToken: string) => {
+  uploadSettingMedia: (kind: 'profileAvatar' | 'webIcon' | 'background' | 'repositoryBackground', file: File, csrfToken: string) => {
     const body = new FormData();
     body.append('image', file);
     return request<SiteSettings>(`/api/admin/settings/media/${kind}`, {

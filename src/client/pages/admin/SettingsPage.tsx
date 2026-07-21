@@ -13,6 +13,7 @@ const tabs = [
   { value: 'base', label: '基础与首页' },
   { value: 'article', label: '文章浏览' },
   { value: 'gallery', label: '画廊浏览' },
+  { value: 'repository', label: '仓库' },
 ] as const;
 type SettingsTab = typeof tabs[number]['value'];
 
@@ -69,6 +70,7 @@ export function SettingsPage() {
   const update = <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => setSettings((current) => current ? { ...current, [key]: value } : current);
   const updateArticle = <K extends keyof SiteSettings['browsing']['article']>(key: K, value: SiteSettings['browsing']['article'][K]) => setSettings((current) => current ? { ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, [key]: value } } } : current);
   const updateGallery = <K extends keyof SiteSettings['browsing']['gallery']>(key: K, value: SiteSettings['browsing']['gallery'][K]) => setSettings((current) => current ? { ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, [key]: value } } } : current);
+  const updateRepositoryAppearance = <K extends keyof SiteSettings['repositoryAppearance']>(key: K, value: SiteSettings['repositoryAppearance'][K]) => setSettings((current) => current ? { ...current, repositoryAppearance: { ...current.repositoryAppearance, [key]: value } } : current);
   const backgroundVisibility = Math.round((1 - settings.backgroundOverlay) * 100);
 
   const save = async (event: FormEvent) => {
@@ -78,14 +80,18 @@ export function SettingsPage() {
     finally { setSaving(false); }
   };
 
-  const upload = async (kind: 'profileAvatar' | 'webIcon' | 'background', file?: File) => {
+  const upload = async (kind: 'profileAvatar' | 'webIcon' | 'background' | 'repositoryBackground', file?: File) => {
     if (!file) return;
     setUploading(true); setError(''); setMessage('');
     try {
       const response = await api.uploadSettingMedia(kind, file, csrfToken);
-      setSettings((current) => current ? { ...current, [kind === 'background' ? 'backgroundImage' : kind]: response[kind === 'background' ? 'backgroundImage' : kind] } : current);
+      setSettings((current) => {
+        if (!current) return current;
+        if (kind === 'repositoryBackground') return { ...current, repositoryAppearance: { ...current.repositoryAppearance, backgroundImage: response.repositoryAppearance.backgroundImage } };
+        return { ...current, [kind === 'background' ? 'backgroundImage' : kind]: response[kind === 'background' ? 'backgroundImage' : kind] };
+      });
       await refresh();
-      setMessage({ profileAvatar: '个人头像已更新。', webIcon: '网页 Icon 已更新。', background: '背景已更新。' }[kind]);
+      setMessage({ profileAvatar: '个人头像已更新。', webIcon: '网页 Icon 已更新。', background: '背景已更新。', repositoryBackground: '仓库背景已更新。' }[kind]);
     } catch (cause) { setError((cause as Error).message); }
     finally { setUploading(false); }
   };
@@ -191,6 +197,33 @@ export function SettingsPage() {
     </div>;
   };
 
+  const renderRepository = () => {
+    const appearance = settings.repositoryAppearance;
+    return <div className="settings-grid">
+      <section className="settings-section"><h2>仓库内容</h2>
+        <label className="form-field"><span>仓库标题</span><input value={settings.repositoryTitle} maxLength={120} onChange={(event) => update('repositoryTitle', event.target.value)} required /><small>显示在仓库页主标题和浏览器标题</small></label>
+        <label className="form-field"><span>仓库说明</span><textarea rows={3} value={settings.repositoryDescription} maxLength={240} onChange={(event) => update('repositoryDescription', event.target.value)} /><small>显示在仓库页标题旁；留空时不显示说明</small></label>
+      </section>
+      <section className="settings-section"><h2>仓库背景</h2>
+        <ImageDropField className="upload-control background-upload" disabled={uploading} onFile={(file) => void upload('repositoryBackground', file)} onError={setError}><span className="media-preview background-preview">{appearance.backgroundImage ? <img src={appearance.backgroundImage} alt="当前仓库背景" /> : <ImageIcon />}</span><span><strong>上传或拖入仓库背景</strong><small>背景只显示在公开仓库页，不影响其他页面</small></span></ImageDropField>
+        {appearance.backgroundImage && <button type="button" className="button secondary-button" onClick={() => updateRepositoryAppearance('backgroundImage', null)}>移除仓库背景</button>}
+      </section>
+      <section className="settings-section"><h2>标题区域</h2>
+        <RangeSetting label="标题区域最小高度" value={appearance.headingMinHeight} defaultValue={220} min={200} max={560} step={10} suffix="px" onChange={(value) => updateRepositoryAppearance('headingMinHeight', value)} />
+        <SelectField label="标题对齐" value={appearance.titleAlign} options={[{ value: 'left', label: '左侧' }, { value: 'center', label: '居中' }]} onChange={(value) => updateRepositoryAppearance('titleAlign', value)} />
+        <RangeSetting label="内容上下位置" value={appearance.contentOffset} defaultValue={0} min={-120} max={120} step={10} suffix="px" onChange={(value) => updateRepositoryAppearance('contentOffset', value)} />
+      </section>
+      <section className="settings-section"><h2>目录与文件</h2>
+        <SelectField label="目录布局" value={appearance.directoryLayout} options={[{ value: 'grid', label: '网格' }, { value: 'list', label: '列表' }]} onChange={(value) => updateRepositoryAppearance('directoryLayout', value)} />
+        <RangeSetting label="列表表面透明度" value={Math.round(appearance.surfaceOpacity * 100)} defaultValue={100} min={55} max={100} suffix="%" onChange={(value) => updateRepositoryAppearance('surfaceOpacity', value / 100)} />
+        <ToggleField label="显示目录说明" checked={appearance.showDescriptions} onChange={(value) => updateRepositoryAppearance('showDescriptions', value)} />
+        <ToggleField label="显示项目数量" checked={appearance.showItemCounts} onChange={(value) => updateRepositoryAppearance('showItemCounts', value)} />
+        <ToggleField label="显示文件大小等信息" checked={appearance.showFileMetadata} onChange={(value) => updateRepositoryAppearance('showFileMetadata', value)} />
+        <ToggleField label="显示最近更新时间" checked={appearance.showRecentUpdates} onChange={(value) => updateRepositoryAppearance('showRecentUpdates', value)} />
+      </section>
+    </div>;
+  };
+
   return <main id="main" className="page-shell admin-shell settings-shell">
     <AdminNav />
     <form onSubmit={save}>
@@ -198,7 +231,7 @@ export function SettingsPage() {
       <nav className="settings-tabs" aria-label="站点设置分类">{tabs.map((tab) => <NavLink key={tab.value} to={`/admin/settings?tab=${tab.value}`} className={({ isActive }) => isActive && activeTab === tab.value ? 'active' : undefined} aria-current={activeTab === tab.value ? 'page' : undefined}>{tab.label}</NavLink>)}</nav>
       {error && <div className="message error-message" role="alert">{error}</div>}
       {message && <div className="message success-message" role="status">{message}</div>}
-      {activeTab === 'base' ? renderBase() : activeTab === 'article' ? renderArticleBrowsing() : renderGalleryBrowsing()}
+      {activeTab === 'base' ? renderBase() : activeTab === 'article' ? renderArticleBrowsing() : activeTab === 'gallery' ? renderGalleryBrowsing() : renderRepository()}
     </form>
   </main>;
 }

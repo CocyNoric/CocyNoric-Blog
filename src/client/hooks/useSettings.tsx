@@ -3,11 +3,25 @@ import type { PublicSettings } from '../../shared/types.js';
 import { api } from '../api.js';
 
 const fallbackSettings: PublicSettings = {
-  version: 7,
-  siteName: 'CocyNoric‘s Blog',
-  homeTitle: 'CocyNoric‘s Blog',
-  footerText: 'CocyNoric‘s Blog',
+  version: 10,
+  siteName: "CocyNoric's Blog",
+  homeTitle: "CocyNoric's Blog",
+  footerText: "CocyNoric's Blog",
   galleryDescription: '项目、作品与视觉记录。',
+  repositoryTitle: '仓库',
+  repositoryDescription: '代码、工具与项目归档。',
+  repositoryAppearance: {
+    backgroundImage: null,
+    headingMinHeight: 220,
+    titleAlign: 'left',
+    contentOffset: 0,
+    surfaceOpacity: 1,
+    directoryLayout: 'grid',
+    showDescriptions: true,
+    showItemCounts: true,
+    showFileMetadata: true,
+    showRecentUpdates: true,
+  },
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,
@@ -79,7 +93,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const refresh = async () => {
     const next = await api.settings();
     setSettings(next);
-    document.title = next.siteName;
   };
 
   useEffect(() => {

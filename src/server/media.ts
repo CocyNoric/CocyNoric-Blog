@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import type { Request, Response } from 'express';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
+import { validateGalleryFilename } from './galleryFilename.js';
 
 const supported = new Map([
   ['image/png', 'png'],
@@ -19,7 +20,7 @@ export function uploadError(message: string, status = 400) {
   return Object.assign(new Error(message), { status });
 }
 
-export async function processImageFile(temporaryPath: string) {
+export async function processImageFile(temporaryPath: string, domain: 'general' | 'markdown' = 'general') {
   const size = (await stat(temporaryPath)).size;
   if (size > config.uploadLimit) throw uploadError('图片不能超过 20 MB', 413);
 
@@ -29,7 +30,8 @@ export async function processImageFile(temporaryPath: string) {
 
   const compress = size > config.compressionThreshold;
   const filename = `${randomUUID()}.${compress ? 'webp' : extension}`;
-  const destination = path.join(dataStore.paths.media, filename);
+  const directory = domain === 'markdown' ? dataStore.paths.markdownMedia : dataStore.paths.media;
+  const destination = path.join(directory, filename);
 
   if (compress) {
     try {
@@ -55,10 +57,41 @@ export async function processImageFile(temporaryPath: string) {
   };
 }
 
-export async function receiveImage(req: Request, fieldLimit = 2) {
-  return new Promise<{ url: string; filePath: string; fields: Record<string, string>; width?: number; height?: number }>((resolve, reject) => {
+type StoredImage = {
+  url: string;
+  filePath: string;
+  fields: Record<string, string>;
+  width?: number;
+  height?: number;
+};
+
+type ReceivedImage = {
+  temporaryPath: string;
+  originalFilename: string;
+  mime: string;
+  fields: Record<string, string>;
+  width?: number;
+  height?: number;
+};
+
+async function inspectGalleryImage(temporaryPath: string, originalFilename: string) {
+  const size = (await stat(temporaryPath)).size;
+  if (size > config.uploadLimit) throw uploadError('图片不能超过 20 MB', 413);
+  const type = await fileTypeFromFile(temporaryPath);
+  const extension = type ? supported.get(type.mime) : undefined;
+  if (!type || !extension) throw uploadError('仅支持 PNG、JPEG 或 WebP 图片');
+  validateGalleryFilename(originalFilename, type.mime);
+  const metadata = await sharp(temporaryPath).metadata();
+  return { mime: type.mime, width: metadata.width, height: metadata.height };
+}
+
+export async function receiveImage(req: Request, fieldLimit?: number, preserveOriginal?: false, domain?: 'general' | 'markdown'): Promise<StoredImage>;
+export async function receiveImage(req: Request, fieldLimit: number, preserveOriginal: true): Promise<ReceivedImage>;
+export async function receiveImage(req: Request, fieldLimit = 2, preserveOriginal = false, domain: 'general' | 'markdown' = 'general') {
+  return new Promise<StoredImage | ReceivedImage>((resolve, reject) => {
     let settled = false;
     let temporaryPath: string | null = null;
+    let originalFilename = '';
     const fields: Record<string, string> = {};
     let writeStream: ReturnType<typeof import('node:fs').createWriteStream> | null = null;
     let uploadPromise: Promise<void> | null = null;
@@ -82,18 +115,19 @@ export async function receiveImage(req: Request, fieldLimit = 2) {
 
     let busboy: Busboy.Busboy;
     try {
-      busboy = Busboy({ headers: req.headers, limits: { files: 1, fileSize: config.uploadLimit, fields: fieldLimit } });
+      busboy = Busboy({ headers: req.headers, defParamCharset: 'utf8', limits: { files: 1, fileSize: config.uploadLimit, fields: fieldLimit } });
     } catch {
       reject(uploadError('上传格式无效'));
       return;
     }
 
-    busboy.on('file', (_name, stream) => {
+    busboy.on('file', (_name, stream, info) => {
       if (temporaryPath) {
         stream.resume();
         fail(uploadError('每次只能上传一个文件'));
         return;
       }
+      originalFilename = info.filename;
       temporaryPath = path.join(dataStore.paths.tmp, `${randomUUID()}.upload`);
       uploadPromise = new Promise<void>((done, error) => {
         writeStream = createWriteStream(temporaryPath!, { flags: 'wx', mode: 0o600 });
@@ -116,7 +150,15 @@ export async function receiveImage(req: Request, fieldLimit = 2) {
         if (!temporaryPath || !uploadPromise) throw uploadError('请选择图片');
         await uploadPromise;
         if (fileTooLarge) throw uploadError('图片不能超过 20 MB', 413);
-        const result = await processImageFile(temporaryPath);
+        if (preserveOriginal) {
+          const inspected = await inspectGalleryImage(temporaryPath, originalFilename);
+          const savedTemporaryPath = temporaryPath;
+          temporaryPath = null;
+          settled = true;
+          resolve({ temporaryPath: savedTemporaryPath, originalFilename, fields, ...inspected });
+          return;
+        }
+        const result = await processImageFile(temporaryPath, domain);
         temporaryPath = null;
         settled = true;
         resolve({ ...result, fields });
@@ -128,13 +170,22 @@ export async function receiveImage(req: Request, fieldLimit = 2) {
   });
 }
 
-export function serveMedia(req: Request, res: Response) {
+export async function serveGalleryMedia(req: Request, res: Response) {
+  const id = req.params.id;
   const filename = req.params.filename;
-  if (typeof filename !== 'string' || !/^[a-f0-9-]+\.(png|jpe?g|webp)$/i.test(filename)) {
+  if (typeof id !== 'string' || typeof filename !== 'string' || !/^\d{8}$/.test(id)) {
     res.sendStatus(404);
     return;
   }
-  const filePath = path.join(dataStore.paths.media, filename);
+  const item = await dataStore.getGalleryItem(id);
+  if (!item || item.originalFilename !== filename) {
+    res.sendStatus(404);
+    return;
+  }
+  streamMedia(dataStore.galleryFilePath(item), filename, res);
+}
+
+function streamMedia(filePath: string, filename: string, res: Response) {
   const extension = path.extname(filename).toLowerCase();
   const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg';
   res.set({
@@ -148,4 +199,31 @@ export function serveMedia(req: Request, res: Response) {
     else res.destroy();
   });
   stream.pipe(res);
+}
+
+async function existingMediaPath(filename: string) {
+  for (const directory of [dataStore.paths.media, dataStore.paths.markdownMedia]) {
+    const filePath = path.join(directory, filename);
+    try {
+      await stat(filePath);
+      return filePath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return null;
+}
+
+export async function serveMedia(req: Request, res: Response) {
+  const filename = req.params.filename;
+  if (typeof filename !== 'string' || !/^[a-f0-9-]+\.(png|jpe?g|webp)$/i.test(filename)) {
+    res.sendStatus(404);
+    return;
+  }
+  const filePath = await existingMediaPath(filename);
+  if (!filePath) {
+    res.sendStatus(404);
+    return;
+  }
+  streamMedia(filePath, filename, res);
 }

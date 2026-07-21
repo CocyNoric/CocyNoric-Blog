@@ -1,19 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, rmdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
 import sharp from 'sharp';
-import { galleryInputSchema, galleryItemSchema, migrateSettings, postInputSchema, postMetaSchema, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
+import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
 
 const defaultSettings: SiteSettings = {
-  version: 7,
-  siteName: 'CocyNoric‘s Blog',
-  homeTitle: 'CocyNoric‘s Blog',
-  footerText: 'CocyNoric‘s Blog',
+  version: 10,
+  siteName: "CocyNoric's Blog",
+  homeTitle: "CocyNoric's Blog",
+  footerText: "CocyNoric's Blog",
   galleryDescription: '项目、作品与视觉记录。',
+  repositoryTitle: '仓库',
+  repositoryDescription: '代码、工具与项目归档。',
+  repositoryAppearance: defaultRepositoryAppearance,
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,
@@ -107,35 +111,95 @@ function normalizeMeta(data: Record<string, unknown>) {
   };
 }
 
-class DataStore {
-  readonly paths = {
-    root: config.dataDir,
-    settings: path.join(config.dataDir, 'settings.json'),
-    admin: path.join(config.dataDir, 'admin.json'),
-    posts: path.join(config.dataDir, 'posts'),
-    media: path.join(config.dataDir, 'media'),
-    gallery: path.join(config.dataDir, 'gallery.json'),
-    sessions: path.join(config.dataDir, 'sessions'),
-    tmp: path.join(config.dataDir, 'tmp'),
-    initialized: path.join(config.dataDir, '.initialized'),
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeSettings(current: SiteSettings, input: unknown) {
+  if (!isRecord(input)) return input;
+
+  const merged: Record<string, unknown> = {
+    ...current,
+    ...input,
+    version: current.version,
+  };
+  const mergeNested = (key: string, source: Record<string, unknown>) => {
+    if (!(key in input)) return;
+    const value = input[key];
+    merged[key] = isRecord(value) ? { ...source, ...value } : value;
   };
 
+  mergeNested('repositoryAppearance', current.repositoryAppearance);
+  mergeNested('homeContent', current.homeContent);
+  mergeNested('homeHero', current.homeHero);
+
+  if ('browsing' in input) {
+    const value = input.browsing;
+    if (!isRecord(value)) {
+      merged.browsing = value;
+    } else {
+      const browsing: Record<string, unknown> = { ...current.browsing, ...value };
+      if ('article' in value) {
+        browsing.article = isRecord(value.article)
+          ? { ...current.browsing.article, ...value.article }
+          : value.article;
+      }
+      if ('gallery' in value) {
+        browsing.gallery = isRecord(value.gallery)
+          ? { ...current.browsing.gallery, ...value.gallery }
+          : value.gallery;
+      }
+      merged.browsing = browsing;
+    }
+  }
+
+  return merged;
+}
+
+export class DataStore {
+  readonly paths: StoragePaths;
+
   private writes = new Map<string, Promise<void>>();
+  private settingsMutation = Promise.resolve();
+  private galleryMutation = Promise.resolve();
+  private codeToolsMutation = Promise.resolve();
+  private initialization: Promise<void> | null = null;
+
+  constructor(dataDir = config.dataDir) {
+    const repository = path.join(dataDir, 'repository');
+    const markdown = path.join(repository, 'markdown');
+    const galleryRoot = path.join(repository, 'gallery');
+    this.paths = {
+      root: dataDir,
+      settings: path.join(dataDir, 'settings.json'),
+      admin: path.join(dataDir, 'admin.json'),
+      media: path.join(dataDir, 'media'),
+      sessions: path.join(dataDir, 'sessions'),
+      tmp: path.join(dataDir, 'tmp'),
+      repository,
+      markdown,
+      posts: path.join(markdown, 'posts'),
+      markdownMedia: path.join(markdown, 'media'),
+      initialized: path.join(markdown, '.initialized'),
+      galleryRoot,
+      gallery: path.join(galleryRoot, 'index.json'),
+      codeTools: path.join(repository, 'code-tools'),
+      codeToolsIndex: path.join(repository, 'code-tools', 'index.json'),
+      codeToolsItems: path.join(repository, 'code-tools', 'items'),
+      storageLayout: path.join(dataDir, '.storage-layout.json'),
+    };
+  }
 
   async initialize() {
-    await Promise.all([
-      mkdir(this.paths.root, { recursive: true, mode: 0o700 }),
-      mkdir(this.paths.posts, { recursive: true, mode: 0o700 }),
-      mkdir(this.paths.media, { recursive: true, mode: 0o700 }),
-      mkdir(this.paths.sessions, { recursive: true, mode: 0o700 }),
-      mkdir(this.paths.tmp, { recursive: true, mode: 0o700 }),
-    ]);
+    this.initialization ??= this.performInitialization();
+    return this.initialization;
+  }
+
+  private async performInitialization() {
+    await migrateStorageLayout(this.paths);
 
     if (!(await this.exists(this.paths.settings))) {
       await this.writeSettings(defaultSettings);
-    }
-    if (!(await this.exists(this.paths.gallery))) {
-      await this.atomicWrite(this.paths.gallery, '[]\n');
     }
     if (!(await this.exists(this.paths.initialized))) {
       for (const post of starterPosts) await this.savePost(post);
@@ -150,51 +214,310 @@ class DataStore {
     return settings;
   }
 
-  async writeSettings(input: SiteSettings) {
-    const settings = migrateSettings(input);
-    await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
-    return settings;
+  private mutateSettings<T>(mutation: () => Promise<T>) {
+    const result = this.settingsMutation.then(mutation, mutation);
+    this.settingsMutation = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async writeSettings(input: unknown) {
+    return this.mutateSettings(async () => {
+      const current = (await this.exists(this.paths.settings))
+        ? await this.readSettings()
+        : migrateSettings(defaultSettings);
+      const settings = migrateSettings(mergeSettings(current, input));
+      await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
+      return settings;
+    });
+  }
+
+  private async readCodeToolsIndex(): Promise<CodeToolsIndex> {
+    const value = JSON.parse(await readFile(this.paths.codeToolsIndex, 'utf8')) as unknown;
+    const legacy = legacyCodeToolsIndexSchema.safeParse(value);
+    if (legacy.success) return { version: 2, items: legacy.data.items, projects: [] };
+    return codeToolsIndexSchema.parse(value);
+  }
+
+  private async writeCodeToolsIndex(index: CodeToolsIndex) {
+    await this.atomicWrite(
+      this.paths.codeToolsIndex,
+      `${JSON.stringify(codeToolsIndexSchema.parse(index), null, 2)}\n`,
+    );
+  }
+
+  private mutateCodeTools<T>(mutation: () => Promise<T>) {
+    const result = this.codeToolsMutation.then(mutation, mutation);
+    this.codeToolsMutation = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async listCodeTools() {
+    return [...(await this.readCodeToolsIndex()).items]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async getCodeTool(id: string) {
+    return (await this.readCodeToolsIndex()).items.find((item) => item.id === id) ?? null;
+  }
+
+  codeToolFilePath(item: Pick<CodeToolItem, 'id' | 'originalFilename'>) {
+    return path.join(this.paths.codeToolsItems, item.id, item.originalFilename);
+  }
+
+  async addCodeTool(input: Omit<CodeToolItem, 'id' | 'createdAt'> & { temporaryPath: string }) {
+    return this.mutateCodeTools(async () => {
+      const index = await this.readCodeToolsIndex();
+      if (index.items.length >= 1000) {
+        throw Object.assign(new Error('代码和工具目录最多保存 1000 个文件'), { status: 409 });
+      }
+      const id = randomUUID();
+      const item = codeToolsIndexSchema.shape.items.element.parse({
+        id,
+        originalFilename: input.originalFilename,
+        size: input.size,
+        mimeType: input.mimeType,
+        mimeSource: input.mimeSource,
+        sha256: input.sha256,
+        createdAt: new Date().toISOString(),
+      });
+      const directory = path.join(this.paths.codeToolsItems, id);
+      const destination = path.join(directory, item.originalFilename);
+      await mkdir(directory, { mode: 0o700 });
+      await rename(input.temporaryPath, destination);
+      try {
+        const next = codeToolsIndexSchema.parse({ version: 2, items: [item, ...index.items], projects: index.projects });
+        await this.writeCodeToolsIndex(next);
+        return item;
+      } catch (error) {
+        await rename(destination, input.temporaryPath).catch(() => undefined);
+        await rmdir(directory).catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  async listCodeToolProjects() {
+    return [...(await this.readCodeToolsIndex()).projects]
+      .map(({ files: _files, ...project }) => project)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  async getCodeToolProject(slug: string) {
+    return (await this.readCodeToolsIndex()).projects.find((project) => project.slug === slug) ?? null;
+  }
+
+  codeToolProjectRootPath(project: Pick<CodeToolProject, 'slug'>) {
+    return path.join(this.paths.codeTools, project.slug);
+  }
+
+  codeToolProjectFilePath(project: Pick<CodeToolProject, 'slug'>, relativePath: string) {
+    return path.join(this.codeToolProjectRootPath(project), 'files', ...relativePath.split('/'));
+  }
+
+  async addCodeToolProject(input: {
+    project: CodeToolProject;
+    temporaryDirectory: string;
+  }) {
+    return this.mutateCodeTools(async () => {
+      const index = await this.readCodeToolsIndex();
+      if (index.projects.some((project) => project.slug === input.project.slug)) {
+        throw Object.assign(new Error('项目名称已存在'), { status: 409 });
+      }
+      const root = this.codeToolProjectRootPath(input.project);
+      const filesDirectory = path.join(root, 'files');
+      await mkdir(filesDirectory, { recursive: true, mode: 0o700 });
+      try {
+        const stagedEntries = await readdir(input.temporaryDirectory, { withFileTypes: true });
+        for (const entry of stagedEntries) {
+          await cp(
+            path.join(input.temporaryDirectory, entry.name),
+            path.join(filesDirectory, entry.name),
+            { recursive: entry.isDirectory(), errorOnExist: true, force: false }
+          );
+        }
+        await this.atomicWrite(path.join(root, 'manifest.json'), `${JSON.stringify(input.project, null, 2)}\n`);
+        await this.writeCodeToolsIndex({ version: 2, items: index.items, projects: [input.project, ...index.projects] });
+        await rm(input.temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
+        return input.project;
+      } catch (error) {
+        await rm(root, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  async deleteCodeToolProject(slug: string) {
+    return this.mutateCodeTools(async () => {
+      const index = await this.readCodeToolsIndex();
+      const project = index.projects.find((candidate) => candidate.slug === slug);
+      if (!project) return null;
+      const root = this.codeToolProjectRootPath(project);
+      const tombstone = path.join(this.paths.tmp, `${randomUUID()}.project-deleted`);
+      let backedUp = false;
+      let rootExists = false;
+      try {
+        rootExists = (await stat(root)).isDirectory();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (rootExists) {
+        await cp(root, tombstone, { recursive: true, errorOnExist: true, force: false });
+        backedUp = true;
+        try {
+          await rm(root, { recursive: true, force: true });
+        } catch (error) {
+          await rm(tombstone, { recursive: true, force: true }).catch(() => undefined);
+          throw error;
+        }
+      }
+      try {
+        await this.writeCodeToolsIndex({ version: 2, items: index.items, projects: index.projects.filter((candidate) => candidate.slug !== slug) });
+      } catch (error) {
+        if (backedUp) {
+          await cp(tombstone, root, { recursive: true, errorOnExist: true, force: false }).catch(() => undefined);
+        }
+        throw error;
+      }
+      if (backedUp) await rm(tombstone, { recursive: true, force: true }).catch(() => undefined);
+      return project;
+    });
+  }
+
+  async codeToolProjectListing(slug: string, directory = '') {
+    const project = await this.getCodeToolProject(slug);
+    if (!project) return null;
+    const prefix = directory ? `${directory}/` : '';
+    const children = new Map<string, { kind: 'directory' | 'file'; file?: CodeToolProjectFile }>();
+    for (const file of project.files) {
+      if (!file.relativePath.startsWith(prefix)) continue;
+      const remainder = file.relativePath.slice(prefix.length);
+      if (!remainder) continue;
+      const [name, ...rest] = remainder.split('/');
+      if (rest.length) children.set(name, { kind: 'directory' });
+      else children.set(name, { kind: 'file', file });
+    }
+    return { project, entries: [...children.entries()].map(([name, value]) => ({ name, ...value })) };
+  }
+
+  async getCodeToolProjectFile(slug: string, relativePath: string) {
+    const project = await this.getCodeToolProject(slug);
+    if (!project) return null;
+    const file = project.files.find((candidate) => candidate.relativePath === relativePath);
+    return file ? { project, file } : null;
+  }
+  async deleteCodeTool(id: string) {
+    return this.mutateCodeTools(async () => {
+      const index = await this.readCodeToolsIndex();
+      const item = index.items.find((candidate) => candidate.id === id);
+      if (!item) return null;
+      const filePath = this.codeToolFilePath(item);
+      const tombstone = path.join(this.paths.tmp, `${randomUUID()}.deleted`);
+      await rename(filePath, tombstone);
+      try {
+        await this.writeCodeToolsIndex({
+          version: 2,
+          items: index.items.filter((candidate) => candidate.id !== item.id),
+          projects: index.projects,
+        });
+      } catch (error) {
+        await rename(tombstone, filePath).catch(() => undefined);
+        throw error;
+      }
+      await unlink(tombstone).catch(() => undefined);
+      await rmdir(path.dirname(filePath)).catch(() => undefined);
+      return item;
+    });
+  }
+
+  private async readGalleryIndex() {
+    const value = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
+    return galleryIndexSchema.parse(value);
+  }
+
+  private async writeGalleryIndex(index: GalleryIndex) {
+    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(galleryIndexSchema.parse(index), null, 2)}\n`);
+  }
+
+  private mutateGallery<T>(mutation: () => Promise<T>) {
+    const result = this.galleryMutation.then(mutation, mutation);
+    this.galleryMutation = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   async listGallery() {
-    const value = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
-    return galleryItemSchema.array().parse(value).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return [...(await this.readGalleryIndex()).items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async getGalleryItem(id: string) {
-    return (await this.listGallery()).find((item) => item.id === id) ?? null;
+    return (await this.readGalleryIndex()).items.find((item) => item.id === id || item.legacyId === id) ?? null;
   }
 
-  async addGalleryItem(input: Pick<GalleryItem, 'url' | 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'width' | 'height'>>) {
-    const item = galleryItemSchema.parse({ ...input, id: randomUUID(), createdAt: new Date().toISOString() });
-    const items = await this.listGallery();
-    await this.atomicWrite(this.paths.gallery, `${JSON.stringify([item, ...items], null, 2)}\n`);
-    return item;
+  galleryFilePath(item: Pick<GalleryItem, 'id' | 'originalFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, item.originalFilename);
+  }
+
+  async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
+    return this.mutateGallery(async () => {
+      const index = await this.readGalleryIndex();
+      const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
+      const occupied = entries
+        .filter((entry) => entry.isDirectory() && /^\d{8}$/.test(entry.name))
+        .map((entry) => Number(entry.name));
+      const sequence = Math.max(index.nextId, occupied.length ? Math.max(...occupied) + 1 : 1);
+      if (sequence > 99_999_999) throw new Error('画廊 ID 已用尽');
+
+      const id = String(sequence).padStart(8, '0');
+      const directory = path.join(this.paths.galleryRoot, id);
+      const destination = path.join(directory, input.originalFilename);
+      await mkdir(directory, { mode: 0o700 });
+      await rename(input.temporaryPath, destination);
+
+      try {
+        const item = galleryItemSchema.parse({
+          ...input,
+          temporaryPath: undefined,
+          id,
+          url: `/media/gallery/${id}/${encodeURIComponent(input.originalFilename)}`,
+          createdAt: new Date().toISOString(),
+        });
+        await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
+        return item;
+      } catch (error) {
+        await rename(destination, input.temporaryPath).catch(() => undefined);
+        await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
+    });
   }
 
   async updateGalleryItem(id: string, raw: GalleryInput) {
-    const input = galleryInputSchema.parse(raw);
-    const items = await this.listGallery();
-    const index = items.findIndex((candidate) => candidate.id === id);
-    if (index < 0) return null;
-    const current = items[index];
-    const item = galleryItemSchema.parse({ ...current, ...input });
-    if ((input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
-      const metadata = await sharp(path.join(this.paths.media, path.basename(item.url))).metadata();
-      item.width = metadata.width;
-      item.height = metadata.height;
-    }
-    items[index] = item;
-    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(items, null, 2)}\n`);
-    return item;
+    return this.mutateGallery(async () => {
+      const input = galleryInputSchema.parse(raw);
+      const index = await this.readGalleryIndex();
+      const itemIndex = index.items.findIndex((candidate) => candidate.id === id || candidate.legacyId === id);
+      if (itemIndex < 0) return null;
+      const current = index.items[itemIndex];
+      const item = galleryItemSchema.parse({ ...current, ...input });
+      if ((input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
+        const metadata = await sharp(this.galleryFilePath(item)).metadata();
+        item.width = metadata.width;
+        item.height = metadata.height;
+      }
+      index.items[itemIndex] = item;
+      await this.writeGalleryIndex(index);
+      return item;
+    });
   }
 
   async deleteGalleryItem(id: string) {
-    const items = await this.listGallery();
-    const item = items.find((candidate) => candidate.id === id);
-    if (!item) return null;
-    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(items.filter((candidate) => candidate.id !== id), null, 2)}\n`);
-    return item;
+    return this.mutateGallery(async () => {
+      const index = await this.readGalleryIndex();
+      const item = index.items.find((candidate) => candidate.id === id || candidate.legacyId === id);
+      if (!item) return null;
+      await this.writeGalleryIndex({ ...index, items: index.items.filter((candidate) => candidate.id !== item.id) });
+      await rm(path.join(this.paths.galleryRoot, item.id), { recursive: true, force: true });
+      return item;
+    });
   }
 
   async listPosts(includeDrafts = false) {
