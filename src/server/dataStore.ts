@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { cp, mkdir, readdir, readFile, rename, rm, rmdir, stat, unlink } from 'node:fs/promises';
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, rmdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
@@ -8,6 +8,7 @@ import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, 
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
+import { validateCodeToolProjectPath, codeToolPathError } from './codeToolPaths.js';
 
 const defaultSettings: SiteSettings = {
   version: 10,
@@ -311,7 +312,8 @@ export class DataStore {
   }
 
   codeToolProjectFilePath(project: Pick<CodeToolProject, 'slug'>, relativePath: string) {
-    return path.join(this.codeToolProjectRootPath(project), 'files', ...relativePath.split('/'));
+    const safePath = validateCodeToolProjectPath(relativePath);
+    return path.join(this.codeToolProjectRootPath(project), 'files', ...safePath.split('/'));
   }
 
   async addCodeToolProject(input: {
@@ -384,9 +386,10 @@ export class DataStore {
   }
 
   async codeToolProjectListing(slug: string, directory = '') {
+    const safeDirectory = directory ? validateCodeToolProjectPath(directory) : '';
     const project = await this.getCodeToolProject(slug);
     if (!project) return null;
-    const prefix = directory ? `${directory}/` : '';
+    const prefix = safeDirectory ? `${safeDirectory}/` : '';
     const children = new Map<string, { kind: 'directory' | 'file'; file?: CodeToolProjectFile }>();
     for (const file of project.files) {
       if (!file.relativePath.startsWith(prefix)) continue;
@@ -400,10 +403,85 @@ export class DataStore {
   }
 
   async getCodeToolProjectFile(slug: string, relativePath: string) {
+    const safePath = validateCodeToolProjectPath(relativePath);
     const project = await this.getCodeToolProject(slug);
     if (!project) return null;
-    const file = project.files.find((candidate) => candidate.relativePath === relativePath);
+    const file = project.files.find((candidate) => candidate.relativePath === safePath);
     return file ? { project, file } : null;
+  }
+
+  async deleteCodeToolProjectEntry(slug: string, relativePath: string) {
+    const safePath = validateCodeToolProjectPath(relativePath);
+    return this.mutateCodeTools(async () => {
+      const index = await this.readCodeToolsIndex();
+      const project = index.projects.find((candidate) => candidate.slug === slug);
+      if (!project) return null;
+
+      const directFile = project.files.find((file) => file.relativePath === safePath);
+      const matchingFiles = directFile
+        ? [directFile]
+        : project.files.filter((file) => file.relativePath.startsWith(`${safePath}/`));
+      if (!matchingFiles.length) return null;
+
+      const root = this.codeToolProjectRootPath(project);
+      const filesRoot = path.join(root, 'files');
+      const target = this.codeToolProjectFilePath(project, safePath);
+      const targetKind = directFile ? 'file' : 'directory';
+      const ancestors = [filesRoot];
+      for (const part of safePath.split('/').slice(0, -1)) ancestors.push(path.join(ancestors.at(-1)!, part));
+      for (const ancestor of ancestors) {
+        try {
+          if ((await lstat(ancestor)).isSymbolicLink()) throw codeToolPathError('项目文件路径无效');
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+          throw error;
+        }
+      }
+
+      let exists = false;
+      try {
+        const details = await lstat(target);
+        if (details.isSymbolicLink() || (targetKind === 'file' ? !details.isFile() : !details.isDirectory())) {
+          throw codeToolPathError('项目文件状态无效', 409);
+        }
+        exists = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+
+      const now = new Date().toISOString();
+      const remainingFiles = project.files.filter((file) => !matchingFiles.some((match) => match.id === file.id));
+      const updatedProject = codeToolsIndexSchema.shape.projects.element.parse({
+        ...project,
+        updatedAt: now,
+        fileCount: remainingFiles.length,
+        totalBytes: remainingFiles.reduce((sum, file) => sum + file.size, 0),
+        files: remainingFiles,
+      });
+      const manifestPath = path.join(root, 'manifest.json');
+      const previousManifest = await readFile(manifestPath);
+      const tombstone = path.join(this.paths.tmp, `${randomUUID()}.project-entry-deleted`);
+      let moved = false;
+
+      if (exists) {
+        await rename(target, tombstone);
+        moved = true;
+      }
+      try {
+        await this.atomicWrite(manifestPath, `${JSON.stringify(updatedProject, null, 2)}\n`);
+        await this.writeCodeToolsIndex({
+          version: 2,
+          items: index.items,
+          projects: index.projects.map((candidate) => candidate.slug === project.slug ? updatedProject : candidate),
+        });
+      } catch (error) {
+        await this.atomicWrite(manifestPath, previousManifest).catch(() => undefined);
+        if (moved) await rename(tombstone, target).catch(() => undefined);
+        throw error;
+      }
+      if (moved) await rm(tombstone, { recursive: targetKind === 'directory', force: true }).catch(() => undefined);
+      return { project: updatedProject, kind: targetKind, deletedFileCount: matchingFiles.length };
+    });
   }
   async deleteCodeTool(id: string) {
     return this.mutateCodeTools(async () => {
@@ -456,7 +534,7 @@ export class DataStore {
     return path.join(this.paths.galleryRoot, item.id, item.originalFilename);
   }
 
-  async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
+  async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
     return this.mutateGallery(async () => {
       const index = await this.readGalleryIndex();
       const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
@@ -498,7 +576,8 @@ export class DataStore {
       if (itemIndex < 0) return null;
       const current = index.items[itemIndex];
       const item = galleryItemSchema.parse({ ...current, ...input });
-      if ((input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
+      const transitionsToCenteredCrop = current.cropPositioning === 'legacy' && input.cropPositioning === 'center';
+      if ((transitionsToCenteredCrop || input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
         const metadata = await sharp(this.galleryFilePath(item)).metadata();
         item.width = metadata.width;
         item.height = metadata.height;

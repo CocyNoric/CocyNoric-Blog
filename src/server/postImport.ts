@@ -40,8 +40,8 @@ type MarkdownNode = {
   position?: { start?: { offset?: number }; end?: { offset?: number } };
 };
 
-type ArchiveImage = {
-  archivePath: string;
+type ImportedImage = {
+  sourcePath: string;
   temporaryPath: string;
   expectedMime: string;
 };
@@ -49,7 +49,7 @@ type ArchiveImage = {
 type ImageReference = {
   start: number;
   end: number;
-  archivePath: string;
+  sourcePath: string;
 };
 
 function importError(message: string, status = 400) {
@@ -157,7 +157,7 @@ async function readArchive(filePath: string) {
   }
   const temporaryFiles = new Set<string>();
   let markdown: { filename: string; source: Buffer } | null = null;
-  const images = new Map<string, ArchiveImage>();
+  const images = new Map<string, ImportedImage>();
   const seenPaths = new Set<string>();
   let entries = 0;
   let imageCount = 0;
@@ -226,7 +226,7 @@ async function readArchive(filePath: string) {
             const temporaryPath = path.join(dataStore.paths.tmp, `${randomUUID()}.import-image`);
             temporaryFiles.add(temporaryPath);
             await entryFile(zipFile, entry, temporaryPath, consumeSize);
-            images.set(key, { archivePath: normalized, temporaryPath, expectedMime });
+            images.set(key, { sourcePath: normalized, temporaryPath, expectedMime });
           }
           zipFile.readEntry();
         })().catch(fail);
@@ -275,7 +275,7 @@ function relativeImage(url: string) {
   return true;
 }
 
-function resolveImagePath(markdownPath: string, url: string) {
+function resolveImagePath(markdownPath: string, url: string, sourceLabel = 'ZIP') {
   const withoutSuffix = url.split(/[?#]/, 1)[0] ?? '';
   let decoded: string;
   try {
@@ -283,15 +283,15 @@ function resolveImagePath(markdownPath: string, url: string) {
   } catch {
     throw importError(`图片路径编码无效：${url}`);
   }
-  if (decoded.includes('\\') || decoded.includes('\0')) throw importError(`图片路径无效：${url}`);
+  if (decoded.includes('\\') || decoded.includes('\0') || decoded.startsWith('/') || /^[a-z]:/i.test(decoded)) throw importError(`图片路径无效：${url}`);
   const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(markdownPath), decoded));
   if (!resolved || resolved === '.' || resolved.startsWith('../') || path.posix.isAbsolute(resolved)) {
-    throw importError(`图片路径超出 ZIP 范围：${url}`);
+    throw importError(`图片路径超出${sourceLabel}范围：${url}`);
   }
   return resolved.normalize('NFC').toLocaleLowerCase('en-US');
 }
 
-function imageReferences(markdown: string, markdownPath: string, images?: Map<string, ArchiveImage>) {
+function collectImageReferences(markdown: string, markdownPath: string, sourceLabel = 'ZIP') {
   const root = unified().use(remarkParse).parse(markdown) as MarkdownNode;
   const imageIdentifiers = new Set<string>();
   const candidates: MarkdownNode[] = [];
@@ -315,9 +315,7 @@ function imageReferences(markdown: string, markdownPath: string, images?: Map<st
   for (const node of candidates) {
     const url = node.url!;
     if (!relativeImage(url)) continue;
-    if (!images) throw importError(`Markdown 引用了本地图片“${url}”，请将文章和图片一起打包为 ZIP 后导入`);
-    const archivePath = resolveImagePath(markdownPath, url);
-    if (!images.has(archivePath)) throw importError(`ZIP 中缺少 Markdown 引用的图片：${url}`);
+    const sourcePath = resolveImagePath(markdownPath, url, sourceLabel);
     const start = node.position?.start?.offset;
     const end = node.position?.end?.offset;
     if (start === undefined || end === undefined) throw importError('无法定位 Markdown 图片链接');
@@ -325,9 +323,21 @@ function imageReferences(markdown: string, markdownPath: string, images?: Map<st
     const delimiter = node.type === 'definition' ? segment.indexOf(':') : segment.lastIndexOf('](');
     const relativeOffset = segment.indexOf(url, Math.max(delimiter, 0));
     if (relativeOffset < 0) throw importError(`无法改写图片链接：${url}`);
-    references.push({ start: start + relativeOffset, end: start + relativeOffset + url.length, archivePath });
+    references.push({ start: start + relativeOffset, end: start + relativeOffset + url.length, sourcePath });
   }
   return { root, references };
+}
+
+function imageReferences(markdown: string, markdownPath: string, images?: Map<string, ImportedImage>) {
+  const result = collectImageReferences(markdown, markdownPath);
+  for (const reference of result.references) {
+    if (!images) throw importError(`Markdown 引用了本地图片“${markdown.slice(reference.start, reference.end)}”，请将文章和图片一起打包为 ZIP 后导入`);
+    if (!images.has(reference.sourcePath)) {
+      const url = markdown.slice(reference.start, reference.end);
+      throw importError(`ZIP 中缺少 Markdown 引用的图片：${url}`);
+    }
+  }
+  return result;
 }
 
 function normalizedDate(value: unknown) {
@@ -364,7 +374,7 @@ async function availableSlug(preferred: string) {
   return `${base.slice(0, 100 - String(suffix).length - 1)}-${suffix}`;
 }
 
-async function createImportedPost(source: Buffer, filename: string, images?: Map<string, ArchiveImage>) {
+async function createImportedPost(source: Buffer, filename: string, images?: Map<string, ImportedImage>) {
   const createdMedia: string[] = [];
 
   try {
@@ -383,20 +393,20 @@ async function createImportedPost(source: Buffer, filename: string, images?: Map
     if (images) {
       for (const image of images.values()) {
         const actual = await fileTypeFromFile(image.temporaryPath);
-        if (actual?.mime !== image.expectedMime) throw importError(`图片类型与扩展名不一致：${image.archivePath}`);
+        if (actual?.mime !== image.expectedMime) throw importError(`图片类型与扩展名不一致：${image.sourcePath}`);
       }
-      for (const archivePath of new Set(references.map((reference) => reference.archivePath))) {
-        const image = images.get(archivePath)!;
+      for (const sourcePath of new Set(references.map((reference) => reference.sourcePath))) {
+        const image = images.get(sourcePath)!;
         const saved = await processImageFile(image.temporaryPath, 'markdown');
-        images.delete(archivePath);
+        images.delete(sourcePath);
         createdMedia.push(saved.filePath);
-        urls.set(archivePath, saved.url);
+        urls.set(sourcePath, saved.url);
       }
     }
 
     let markdown = parsed.content;
     for (const reference of [...references].sort((a, b) => b.start - a.start)) {
-      markdown = `${markdown.slice(0, reference.start)}${urls.get(reference.archivePath)}${markdown.slice(reference.end)}`;
+      markdown = `${markdown.slice(0, reference.start)}${urls.get(reference.sourcePath)}${markdown.slice(reference.end)}`;
     }
 
     return await dataStore.savePost({

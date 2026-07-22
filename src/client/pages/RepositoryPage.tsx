@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { RepositoryAreaKey, RepositoryEntry, RepositoryListing, RepositoryOverview } from '../../shared/types.js';
 import { api } from '../api.js';
-import { ArrowIcon, DownloadIcon, FolderIcon, ImageIcon } from '../components/Icons.js';
+import { ArrowIcon, DownloadIcon, FileIcon, FolderIcon, ImageIcon } from '../components/Icons.js';
 import { useSettings } from '../hooks/useSettings.js';
 
 type Directory = RepositoryAreaKey;
@@ -37,8 +37,7 @@ function formatFileSize(size: number | undefined) {
 function EntryIcon({ entry }: { entry: RepositoryEntry }) {
   if (entry.kind === 'directory') return <FolderIcon />;
   if (entry.icon === 'image') return <ImageIcon />;
-  if (entry.download) return <DownloadIcon />;
-  return <span className="repository-file-type" aria-hidden="true">{entry.icon === 'markdown' ? 'MD' : entry.icon === 'code' ? '</>' : '·'}</span>;
+  return <FileIcon />;
 }
 
 export function RepositoryPage() {
@@ -107,7 +106,7 @@ export function RepositoryPage() {
       <span className="repository-entry-icon"><EntryIcon entry={entry} /></span>
       <span className="repository-entry-copy">
         <strong>{entry.name}{entry.kind === 'directory' ? '/' : ''}</strong>
-        {appearance.showDescriptions && <small>{entry.description || '—'}</small>}
+        {appearance.showDescriptions && entry.description && <small>{entry.description}</small>}
         {appearance.showRecentUpdates && <span className="repository-entry-mobile-meta"><span>{formatDate(entry.updatedAt)}</span>{entry.size !== undefined && appearance.showFileMetadata && <span>{formatFileSize(entry.size)}</span>}</span>}
       </span>
       {appearance.showRecentUpdates || appearance.showFileMetadata ? <span className="repository-entry-meta">

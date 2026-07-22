@@ -1,11 +1,15 @@
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const imageLimit = 20 * 1024 * 1024;
+export const imageLimit = 20 * 1024 * 1024;
 
-export function validateImageFile(file: File) {
+function imageLimitMessage(maximumBytes: number) {
+  return `图片不能超过 ${maximumBytes / 1024 / 1024} MB`;
+}
+
+export function validateImageFile(file: File, maximumBytes = imageLimit) {
   if (!imageTypes.has(file.type)) throw new Error('仅支持 PNG、JPEG 或 WebP 图片');
-  if (file.size > imageLimit) throw new Error('图片不能超过 20 MB');
+  if (file.size > maximumBytes) throw new Error(imageLimitMessage(maximumBytes));
   return file;
 }
 
@@ -13,18 +17,19 @@ type ImageDropFieldProps = {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
+  maximumBytes?: number;
   onFile: (file: File) => void;
   onError?: (message: string) => void;
 };
 
-export function ImageDropField({ className = '', children, disabled = false, onFile, onError }: ImageDropFieldProps) {
+export function ImageDropField({ className = '', children, disabled = false, maximumBytes = imageLimit, onFile, onError }: ImageDropFieldProps) {
   const depth = useRef(0);
   const [active, setActive] = useState(false);
 
   const accept = (files: FileList) => {
     try {
       if (files.length !== 1) throw new Error('每次只能选择一张图片');
-      onFile(validateImageFile(files[0]!));
+      onFile(validateImageFile(files[0]!, maximumBytes));
     } catch (error) {
       onError?.((error as Error).message);
     }

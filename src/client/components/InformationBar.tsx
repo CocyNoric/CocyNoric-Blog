@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
+import { GalleryCropImage, galleryCropAspectRatio } from './GalleryCropImage.js';
 import { CalendarIcon } from './Icons.js';
 
 type InformationBarProps = {
@@ -17,10 +18,7 @@ type InformationBarProps = {
 };
 
 function thumbnailAspectRatio(item: GalleryItem) {
-  if (item.thumbnailAspectRatio === 'original') {
-    return item.width && item.height ? `${item.width} / ${item.height}` : '1 / 1';
-  }
-  return item.thumbnailAspectRatio.replace(':', ' / ');
+  return galleryCropAspectRatio(item.thumbnailAspectRatio, item.width, item.height, 1);
 }
 
 export function InformationBar({ profileName, description, profileAvatar, recentPosts, galleryItems, currentGalleryId, thumbnailColumns = 2, thumbnailRows = 3, supplementalError }: InformationBarProps) {
@@ -39,7 +37,7 @@ export function InformationBar({ profileName, description, profileAvatar, recent
     {galleryItems && <section className="information-section information-gallery" aria-labelledby="gallery-thumbnails-heading">
       <div className="information-heading"><span className="information-mark" aria-hidden="true" /><h2 id="gallery-thumbnails-heading">画廊浏览</h2></div>
       {galleryItems.length > 0
-        ? <nav className="gallery-thumbnails" aria-label="其他图片" style={{ '--thumbnail-columns': thumbnailColumns, '--thumbnail-rows': thumbnailRows } as CSSProperties}>{galleryItems.slice(0, thumbnailColumns * thumbnailRows).map((item) => <Link key={item.id} to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`} aria-current={item.id === currentGalleryId ? 'page' : undefined} style={{ aspectRatio: thumbnailAspectRatio(item) }}><img src={item.url} alt="" loading="lazy" style={{ objectPosition: `${item.thumbnailFocus.x * 100}% ${item.thumbnailFocus.y * 100}%`, transform: `scale(${1 / item.thumbnailFocus.size})`, transformOrigin: `${item.thumbnailFocus.x * 100}% ${item.thumbnailFocus.y * 100}%` } as CSSProperties} /></Link>)}</nav>
+        ? <nav className="gallery-thumbnails" aria-label="其他图片" style={{ '--thumbnail-columns': thumbnailColumns, '--thumbnail-rows': thumbnailRows } as CSSProperties}>{galleryItems.slice(0, thumbnailColumns * thumbnailRows).map((item) => <Link key={item.id} to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`} aria-current={item.id === currentGalleryId ? 'page' : undefined} style={{ aspectRatio: String(thumbnailAspectRatio(item)) }}><GalleryCropImage src={item.url} alt="" loading="lazy" focus={item.thumbnailFocus} aspectRatio={item.thumbnailAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} fallbackAspectRatio={1} /></Link>)}</nav>
         : <p className="information-empty">暂时没有可显示的图片。</p>}
     </section>}
     {supplementalError && <p className="information-error" role="status">{supplementalError}</p>}

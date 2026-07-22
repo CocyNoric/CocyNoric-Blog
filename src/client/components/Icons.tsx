@@ -16,5 +16,6 @@ export const SettingsIcon = (props: IconProps) => <Icon {...props}><circle cx="1
 export const TrashIcon = (props: IconProps) => <Icon {...props}><path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 11v5M14 11v5"/></Icon>;
 export const ImageIcon = (props: IconProps) => <Icon {...props}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></Icon>;
 export const FolderIcon = (props: IconProps) => <Icon {...props}><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2h6.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5Z"/></Icon>;
+export const FileIcon = (props: IconProps) => <Icon {...props}><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/></Icon>;
 export const UploadIcon = (props: IconProps) => <Icon {...props}><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></Icon>;
 export const DownloadIcon = (props: IconProps) => <Icon {...props}><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></Icon>;

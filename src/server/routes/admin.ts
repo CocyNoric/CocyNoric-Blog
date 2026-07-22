@@ -2,6 +2,7 @@ import { rm, unlink } from 'node:fs/promises';
 import { Router } from 'express';
 import { galleryInputSchema, galleryUploadInputSchema, postInputSchema, previewSchema } from '../../shared/schemas.js';
 import { requireAuth, requireWriteProtection } from '../auth.js';
+import { config } from '../config.js';
 import { dataStore } from '../dataStore.js';
 import { receiveImage } from '../media.js';
 import { receivePostImport } from '../postImport.js';
@@ -19,7 +20,7 @@ function adminProject(project: Awaited<ReturnType<typeof dataStore.listCodeToolP
 adminRouter.get('/repository/code-tools/projects', async (_req, res, next) => {
   try {
     const projects = await dataStore.listCodeToolProjects();
-    const legacy = (await dataStore.listCodeTools()).map((item) => ({ kind: 'legacy' as const, id: item.id, slug: item.id, name: item.originalFilename, description: item.mimeType ?? '代码或工具文件', updatedAt: item.createdAt, fileCount: 1, totalBytes: item.size, downloadUrl: `/api/repository/code-tools/${item.id}/download/${encodeURIComponent(item.originalFilename)}` }));
+    const legacy = (await dataStore.listCodeTools()).map((item) => ({ kind: 'legacy' as const, id: item.id, slug: item.id, name: item.originalFilename, description: '', updatedAt: item.createdAt, fileCount: 1, totalBytes: item.size, downloadUrl: `/api/repository/code-tools/${item.id}/download/${encodeURIComponent(item.originalFilename)}` }));
     res.json([...projects.map(adminProject), ...legacy]);
   } catch (error) { next(error); }
 });
@@ -31,7 +32,7 @@ adminRouter.get('/repository/code-tools/projects/:slug', async (req, res, next) 
     if (!listing) { res.status(404).json({ error: '项目不存在' }); return; }
     const entries = listing.entries.map((entry) => entry.kind === 'directory'
       ? { kind: 'directory' as const, name: entry.name, path: pathname ? `${pathname}/${entry.name}` : entry.name, icon: 'folder' as const, description: '', updatedAt: listing.project.updatedAt }
-      : { kind: 'file' as const, name: entry.name, path: entry.file!.relativePath, icon: 'code' as const, description: entry.file!.mimeType ?? '代码或工具文件', updatedAt: entry.file!.updatedAt, size: entry.file!.size, mimeType: entry.file!.mimeType, href: `/api/repository/code-tools/projects/${encodeURIComponent(listing.project.slug)}/download/${entry.file!.relativePath.split('/').map(encodeURIComponent).join('/')}`, download: true });
+      : { kind: 'file' as const, name: entry.name, path: entry.file!.relativePath, icon: 'code' as const, description: '', updatedAt: entry.file!.updatedAt, size: entry.file!.size, mimeType: entry.file!.mimeType, href: `/api/repository/code-tools/projects/${encodeURIComponent(listing.project.slug)}/download/${entry.file!.relativePath.split('/').map(encodeURIComponent).join('/')}`, download: true });
     res.json({ project: adminProject(listing.project), path: pathname, parentPath: pathname.includes('/') ? pathname.slice(0, pathname.lastIndexOf('/')) : null, entries });
   } catch (error) { next(error); }
 });
@@ -56,6 +57,17 @@ adminRouter.delete('/repository/code-tools/projects/:slug', requireWriteProtecti
     res.status(204).end();
   } catch (error) { next(error); }
 });
+adminRouter.delete('/repository/code-tools/projects/:slug/entries', requireWriteProtection, async (req, res, next) => {
+  try {
+    const slug = req.params.slug;
+    const pathname = typeof req.query.path === 'string' ? req.query.path : null;
+    if (typeof slug !== 'string' || !pathname) { res.status(400).json({ error: '请选择要删除的文件或文件夹' }); return; }
+    const result = await dataStore.deleteCodeToolProjectEntry(slug, pathname);
+    if (!result) { res.status(404).json({ error: '文件或文件夹不存在' }); return; }
+    res.json({ kind: 'project' as const, ...result.project });
+  } catch (error) { next(error); }
+});
+
 adminRouter.get('/repository/code-tools', async (_req, res, next) => {
   try {
     res.json((await dataStore.listCodeTools()).map((item) => ({
@@ -181,7 +193,7 @@ adminRouter.put('/settings', requireWriteProtection, async (req, res, next) => {
 
 adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
   try {
-    const upload = await receiveImage(req, 2, false, 'markdown');
+    const upload = await receiveImage(req, { fieldLimit: 2, domain: 'markdown' });
     res.status(201).json({ url: upload.url });
   } catch (error) {
     next(error);
@@ -189,19 +201,22 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 });
 
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
-  let upload: Awaited<ReturnType<typeof receiveImage>> | null = null;
+  let temporaryPath: string | null = null;
   try {
-    upload = await receiveImage(req, 10, true);
+    const upload = await receiveImage(req, { fieldLimit: 11, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
+    temporaryPath = upload.temporaryPath;
     const input = galleryUploadInputSchema.parse(upload.fields);
-    res.status(201).json(await dataStore.addGalleryItem({
+    const item = await dataStore.addGalleryItem({
       ...input,
       temporaryPath: upload.temporaryPath,
       originalFilename: upload.originalFilename,
       width: upload.width,
       height: upload.height,
-    }));
+    });
+    temporaryPath = null;
+    res.status(201).json(item);
   } catch (error) {
-    if (upload && 'temporaryPath' in upload) await unlink(upload.temporaryPath).catch(() => undefined);
+    if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
     next(error);
   }
 });

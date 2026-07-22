@@ -429,6 +429,8 @@ const thumbnailFocusSchema = z.object({
   size: z.number().finite().min(0.1).max(1).default(1),
 });
 
+const cropPositioningSchema = z.enum(['legacy', 'center']);
+
 const defaultThumbnailFocus = { x: 0.5, y: 0.5, size: 1 };
 
 const legacyGalleryItemBaseSchema = z.object({
@@ -441,6 +443,7 @@ const legacyGalleryItemBaseSchema = z.object({
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
+  cropPositioning: cropPositioningSchema.optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
 });
@@ -466,6 +469,7 @@ const galleryItemBaseSchema = z.object({
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
+  cropPositioning: cropPositioningSchema.optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
 });
@@ -485,6 +489,7 @@ function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSche
     thumbnailAspectRatio: hasSplitConfiguration
       ? (item.thumbnailAspectRatio ?? '1:1')
       : '1:1',
+    cropPositioning: item.cropPositioning ?? 'legacy',
   };
 }
 
@@ -504,6 +509,7 @@ export const galleryInputSchema = z.object({
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.optional(),
+  cropPositioning: cropPositioningSchema.optional(),
 });
 
 export const galleryUploadInputSchema = z.object({
@@ -517,13 +523,15 @@ export const galleryUploadInputSchema = z.object({
   thumbnailFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
   thumbnailFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
-}).transform(({ title, description, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio }) => ({
+  cropPositioning: cropPositioningSchema.default('center'),
+}).transform(({ title, description, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning }) => ({
   title,
   description,
   cardAspectRatio,
   cardFocus: { x: cardFocusX, y: cardFocusY, size: cardFocusSize },
   thumbnailAspectRatio,
   thumbnailFocus: { x: thumbnailFocusX, y: thumbnailFocusY, size: thumbnailFocusSize },
+  cropPositioning,
 }));
 
 const codeToolFilenameSchema = z.string()

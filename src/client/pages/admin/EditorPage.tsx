@@ -25,16 +25,43 @@ export function EditorPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [loadState, setLoadState] = useState<'new' | 'loading' | 'loaded' | 'error'>(id ? 'loading' : 'new');
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
-    if (!id) return;
+    let active = true;
+    if (!id) {
+      setPost(emptyPost);
+      setTags('');
+      setDirty(false);
+      setLoadError('');
+      setLoadState('new');
+      return () => { active = false; };
+    }
+    setPost(emptyPost);
+    setTags('');
+    setPreview('');
+    setDirty(false);
+    setLoadError('');
+    setLoadState('loading');
     void api.adminPost(id).then((value) => {
+      if (!active) return;
       setPost(value);
       setTags(value.tags.join(', '));
-    }).catch((cause: Error) => setError(cause.message));
-  }, [id]);
+      setLoadState('loaded');
+    }).catch((cause: Error) => {
+      if (!active) return;
+      setLoadError(cause.message);
+      setLoadState('error');
+    });
+    return () => { active = false; };
+  }, [id, loadAttempt]);
+
+  const ready = !id || loadState === 'loaded';
 
   useEffect(() => {
+    if (!ready) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void api.preview(post.markdown, csrfToken, controller.signal).then((result) => setPreview(result.html)).catch((cause: Error) => {
@@ -42,7 +69,7 @@ export function EditorPage() {
       });
     }, 350);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [post.markdown, csrfToken]);
+  }, [post.markdown, csrfToken, ready]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); };
@@ -79,6 +106,10 @@ export function EditorPage() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (!ready) {
+      setError('文章仍在载入，请稍后再保存');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -99,9 +130,12 @@ export function EditorPage() {
     <form onSubmit={save}>
       <div className="admin-heading editor-heading">
         <div><p className="eyebrow">文章编辑</p><h1>{id ? '编辑文章' : '新建文章'}</h1></div>
-        <div className="heading-actions"><Link className="button text-button" to="/admin/posts">返回</Link><button className="button primary-button" disabled={saving}>{saving ? '正在保存…' : '保存'}</button></div>
+        <div className="heading-actions"><Link className="button text-button" to="/admin/posts">返回</Link><button className="button primary-button" disabled={saving || !ready}>{saving ? '正在保存…' : loadState === 'loading' ? '正在载入…' : '保存'}</button></div>
       </div>
-      {error && <div className="message error-message" role="alert">{error}</div>}
+      {(error || loadError) && <div className="message error-message" role="alert">{error || loadError}</div>}
+      {loadState === 'loading' && <p className="loading-state">正在载入文章…</p>}
+      {loadState === 'error' && <div className="empty-state"><h2>无法载入文章</h2><p>请重新载入后再编辑或保存。</p><button className="button secondary-button" type="button" onClick={() => setLoadAttempt((current) => current + 1)}>重新载入</button></div>}
+      {ready && <>
       <div className="metadata-grid">
         <label className="form-field span-2"><span>标题</span><input value={post.title} maxLength={160} onChange={(event) => update('title', event.target.value)} required /></label>
         <label className="form-field"><span>文章路径</span><input value={post.slug} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="my-post" onChange={(event) => update('slug', event.target.value)} required /></label>
@@ -120,6 +154,7 @@ export function EditorPage() {
         ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
         <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: preview }} /></section>
       </div>
+      </>}
     </form>
   </main>;
 }

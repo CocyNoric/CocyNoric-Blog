@@ -97,7 +97,7 @@ async function codeToolEntries(pathname: string) {
   if (!pathname) {
     return [
       ...projects.map((project) => directoryEntry({ name: project.name, path: project.slug, description: project.description || `${project.fileCount} 个文件`, updatedAt: project.updatedAt })),
-      ...items.map((item) => directoryEntry({ name: item.originalFilename, path: item.originalFilename, description: item.mimeType ?? '代码或工具文件', updatedAt: item.createdAt, href: legacyDownloadUrl(item) })),
+      ...items.map((item) => directoryEntry({ name: item.originalFilename, path: item.originalFilename, description: '', updatedAt: item.createdAt, href: legacyDownloadUrl(item) })),
     ];
   }
   const [projectSlug, ...pathParts] = pathname.split('/');
@@ -108,9 +108,9 @@ async function codeToolEntries(pathname: string) {
     if (!listing) return null;
     return listing.entries.map((entry) => {
       const entryPath = [project.slug, directory, entry.name].filter(Boolean).join('/');
-      if (entry.kind === 'directory') return directoryEntry({ name: entry.name, path: entryPath, description: '项目文件夹', updatedAt: project.updatedAt });
+      if (entry.kind === 'directory') return directoryEntry({ name: entry.name, path: entryPath, description: '', updatedAt: project.updatedAt });
       const file = entry.file!;
-      return fileEntry({ name: entry.name, path: entryPath, icon: 'code', description: file.mimeType ?? '代码或工具文件', updatedAt: file.updatedAt, size: file.size, mimeType: file.mimeType, href: `/api/repository/code-tools/projects/${encodeURIComponent(project.slug)}/download/${file.relativePath.split('/').map(encodeURIComponent).join('/')}`, download: true });
+      return fileEntry({ name: entry.name, path: entryPath, icon: 'code', description: '', updatedAt: file.updatedAt, size: file.size, mimeType: file.mimeType, href: `/api/repository/code-tools/projects/${encodeURIComponent(project.slug)}/download/${file.relativePath.split('/').map(encodeURIComponent).join('/')}`, download: true });
     });
   }
   const item = items.find((candidate) => candidate.originalFilename === pathname);

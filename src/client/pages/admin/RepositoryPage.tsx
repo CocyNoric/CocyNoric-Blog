@@ -13,6 +13,10 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+type PendingDelete =
+  | { type: 'project'; project: CodeToolAdminProject }
+  | { type: 'entry'; project: CodeToolAdminProject; entry: RepositoryEntry };
+
 export function AdminRepositoryPage() {
   const { csrfToken } = useAuth();
   const [projects, setProjects] = useState<CodeToolAdminProject[]>([]);
@@ -25,7 +29,7 @@ export function AdminRepositoryPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<CodeToolAdminProject | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -84,12 +88,21 @@ export function AdminRepositoryPage() {
     setError('');
     setMessage('');
     try {
-      if (pendingDelete.kind === 'legacy') await api.deleteCodeTool(pendingDelete.id, csrfToken);
-      else await api.deleteCodeToolProject(pendingDelete.slug, csrfToken);
-      setProjects((current) => current.filter((project) => project.id !== pendingDelete.id));
-      if (selected?.id === pendingDelete.id) { setSelected(null); setListing(null); }
+      if (pendingDelete.type === 'project') {
+        const { project } = pendingDelete;
+        if (project.kind === 'legacy') await api.deleteCodeTool(project.id, csrfToken);
+        else await api.deleteCodeToolProject(project.slug, csrfToken);
+        setProjects((current) => current.filter((candidate) => candidate.id !== project.id));
+        if (selected?.id === project.id) { setSelected(null); setListing(null); }
+        setMessage('项目已从公开仓库删除。');
+      } else {
+        const updatedProject = await api.deleteCodeToolProjectEntry(pendingDelete.project.slug, pendingDelete.entry.path, csrfToken);
+        setProjects((current) => current.map((project) => project.id === updatedProject.id ? updatedProject : project));
+        setSelected(updatedProject);
+        await openProject(updatedProject, listing?.path ?? '');
+        setMessage(pendingDelete.entry.kind === 'directory' ? '文件夹及其中内容已删除。' : '文件已删除。');
+      }
       setPendingDelete(null);
-      setMessage('项目已从公开仓库删除。');
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -109,17 +122,29 @@ export function AdminRepositoryPage() {
   };
 
   const renderEntry = (entry: RepositoryEntry) => {
-    const content = <>
+    const primaryContent = <>
       <span className="repository-entry-icon">{entry.kind === 'directory' ? <FolderIcon /> : <span className="repository-file-type" aria-hidden="true">&lt;/&gt;</span>}</span>
-      <span className="repository-entry-copy"><strong>{entry.name}{entry.kind === 'directory' ? '/' : ''}</strong><small>{entry.description || '—'}</small><span className="repository-entry-mobile-meta"><span>{new Date(entry.updatedAt ?? '').toLocaleDateString('zh-CN')}</span>{entry.size !== undefined && <span>{formatFileSize(entry.size)}</span>}</span></span>
+      <span className="repository-entry-copy"><strong>{entry.name}{entry.kind === 'directory' ? '/' : ''}</strong><span className="repository-entry-mobile-meta"><span>{new Date(entry.updatedAt ?? '').toLocaleDateString('zh-CN')}</span>{entry.size !== undefined && <span>{formatFileSize(entry.size)}</span>}</span></span>
       <span className="repository-entry-meta"><span>{new Date(entry.updatedAt ?? '').toLocaleDateString('zh-CN')}</span>{entry.size !== undefined && <span>{formatFileSize(entry.size)}</span>}</span>
       <span className="repository-entry-arrow">{entry.download ? <DownloadIcon /> : <ArrowIcon />}</span>
     </>;
-    if (entry.kind === 'directory') return <button className="repository-entry-row repository-entry-button" key={entry.path} type="button" onClick={() => selected && void openProject(selected, entry.path)}>{content}</button>;
-    return <a className="repository-entry-row" key={entry.path} href={entry.href} download>{content}</a>;
+    const primary = entry.kind === 'directory'
+      ? <button className="repository-entry-row repository-entry-button" type="button" onClick={() => selected && void openProject(selected, entry.path)}>{primaryContent}</button>
+      : <a className="repository-entry-row" href={entry.href} download>{primaryContent}</a>;
+    return <div className="repository-entry-item" key={entry.path}>
+      {primary}
+      <button className="icon-button danger repository-entry-delete" type="button" onClick={() => selected && setPendingDelete({ type: 'entry', project: selected, entry })} aria-label={`删除${entry.kind === 'directory' ? '文件夹' : '文件'} ${entry.name}`}><TrashIcon /></button>
+    </div>;
   };
 
   const pathParts = listing?.path.split('/').filter(Boolean) ?? [];
+  const deleteTitle = pendingDelete?.type === 'project' ? '删除仓库项目？' : '删除文件或文件夹？';
+  const deleteDescription = pendingDelete?.type === 'project'
+    ? `“${pendingDelete.project.name}”及其中全部文件会从公开仓库永久删除。`
+    : pendingDelete ? pendingDelete.entry.kind === 'directory'
+      ? `“${pendingDelete.entry.name}/”及其中全部文件会被永久删除，此操作无法撤销。`
+      : `“${pendingDelete.entry.name}”会被永久删除，此操作无法撤销。`
+      : '';
 
   return <main id="main" className="page-shell admin-shell repository-admin-shell">
     <AdminNav />
@@ -172,11 +197,11 @@ export function AdminRepositoryPage() {
         </aside>
 
         <div className="repository-manager-content">
-          {!selected && <div className="empty-state"><h3>选择一个项目</h3><p>进入项目后可浏览文件夹并下载文件。</p></div>}
+          {!selected && <div className="empty-state"><h3>选择一个项目</h3><p>进入项目后可浏览、下载或删除文件和文件夹。</p></div>}
           {selected && <>
             <div className="repository-manager-toolbar">
-              <div><strong>{selected.name}</strong><small>{selected.description || '代码或工具项目'}</small></div>
-              <button className="icon-button danger" type="button" onClick={() => setPendingDelete(selected)} aria-label={`删除${selected.name}`}><TrashIcon /></button>
+              <div><strong>{selected.name}</strong>{selected.description && <small>{selected.description}</small>}</div>
+              <button className="icon-button danger" type="button" onClick={() => setPendingDelete({ type: 'project', project: selected })} aria-label={`删除${selected.name}`}><TrashIcon /></button>
             </div>
             {selected.kind === 'legacy' && <div className="empty-state"><h3>旧版单文件项目</h3><p>这个附件保持旧格式，可下载或删除。</p><a className="button primary-button" href={selected.downloadUrl}><DownloadIcon />下载文件</a></div>}
             {selected.kind === 'project' && <>
@@ -192,6 +217,6 @@ export function AdminRepositoryPage() {
       </div>
     </section>
 
-    <ConfirmDialog open={Boolean(pendingDelete)} title="删除仓库项目？" description={pendingDelete ? `“${pendingDelete.name}”及其中全部文件会从公开仓库永久删除。` : ''} confirmLabel="删除" destructive busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => void remove()} />
+    <ConfirmDialog open={Boolean(pendingDelete)} title={deleteTitle} description={deleteDescription} confirmLabel="删除" destructive busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => void remove()} />
   </main>;
 }

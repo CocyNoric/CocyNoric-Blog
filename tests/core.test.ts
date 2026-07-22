@@ -9,7 +9,7 @@ import test, { after } from 'node:test';
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, validateCodeToolFilename }, { repositoryOverview, repositoryTree }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -19,6 +19,7 @@ const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verify
   import('../src/server/galleryFilename.js'),
   import('../src/server/codeTools.js'),
   import('../src/server/repositoryStore.js'),
+  import('../src/shared/galleryCrop.js'),
 ]);
 
 function crc32(source: Buffer) {
@@ -461,6 +462,23 @@ test('imports standalone Markdown as a normalized draft and avoids slug conflict
   await Promise.all([dataStore.deletePost(first.id), dataStore.deletePost(second.id), unlink(firstPath), unlink(secondPath)]);
 });
 
+test('imports a draft with a version that supports immediate saves', async () => {
+  const file = path.join(dataStore.paths.tmp, 'immediate-save.md');
+  await writeFile(file, '---\ntitle: Immediate Save\n---\n\nInitial body.\n');
+  const imported = await importPostFile(file, 'immediate-save.md');
+  assert.ok(imported.version);
+
+  const saved = await dataStore.savePost({ ...imported, markdown: `${imported.markdown}\n\nSaved immediately.` });
+  assert.notEqual(saved.version, imported.version);
+  assert.match(saved.markdown, /Saved immediately/);
+  await assert.rejects(
+    dataStore.savePost({ ...imported, markdown: 'Stale save.' }),
+    (error: Error & { code?: string }) => error.code === 'CONFLICT',
+  );
+
+  await Promise.all([dataStore.deletePost(saved.id), unlink(file)]);
+});
+
 test('requires ZIP for relative images in standalone Markdown', async () => {
   const file = path.join(dataStore.paths.tmp, 'relative.md');
   await writeFile(file, '# Relative image\n\n![image](images/photo.png)\n');
@@ -723,6 +741,36 @@ test('preserves nested paths for multipart code-tools project folders', async ()
   await assert.rejects(readFile(dataStore.codeToolProjectFilePath(project, 'README.md')), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
 });
 
+test('deletes individual code-tools files and nested folders through the project manifest', async () => {
+  const received = await createProjectUpload({
+    projectName: 'entry-delete-project',
+    mode: 'folder',
+    files: [
+      { name: 'selected-root/README.md', source: '# Keep\n' },
+      { name: 'selected-root/src/keep.ts', source: 'export const keep = true;\n' },
+      { name: 'selected-root/src/nested/tool.ts', source: 'export const tool = true;\n' },
+    ],
+  });
+  const project = await dataStore.addCodeToolProject(received);
+
+  const fileDeleted = await dataStore.deleteCodeToolProjectEntry(project.slug, 'src/nested/tool.ts');
+  assert.equal(fileDeleted?.kind, 'file');
+  assert.equal(fileDeleted?.project.fileCount, 2);
+  await assert.rejects(readFile(dataStore.codeToolProjectFilePath(project, 'src/nested/tool.ts')), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+  assert.deepEqual((await dataStore.codeToolProjectListing(project.slug, 'src'))?.entries.map((entry) => entry.name), ['keep.ts']);
+
+  const folderDeleted = await dataStore.deleteCodeToolProjectEntry(project.slug, 'src');
+  assert.equal(folderDeleted?.kind, 'directory');
+  assert.equal(folderDeleted?.project.fileCount, 1);
+  assert.equal((await dataStore.codeToolProjectListing(project.slug))?.entries.find((entry) => entry.name === 'src'), undefined);
+  assert.deepEqual(await readFile(dataStore.codeToolProjectFilePath(project, 'README.md'), 'utf8'), '# Keep\n');
+
+  for (const unsafePath of ['', '../README.md', 'src\\keep.ts', '/src', '.git/config', 'src//keep.ts']) {
+    await assert.rejects(dataStore.deleteCodeToolProjectEntry(project.slug, unsafePath), (error: Error & { status?: number }) => error.status === 400);
+  }
+  assert.equal((await dataStore.deleteCodeToolProject(project.slug))?.id, project.id);
+});
+
 test('rejects conflicting multipart project paths without residue', async () => {
   const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
   await assert.rejects(createProjectUpload({
@@ -880,6 +928,28 @@ test('rejects private, malformed, and missing repository paths', async () => {
   await assert.rejects(repositoryTree('markdown', 'missing-article'), (error: Error & { status?: number }) => error.status === 404);
 });
 
+test('centers and clamps gallery crop focus across zoom levels', () => {
+  const square = cropAspectRatio('1:1', 1600, 900);
+  const centered = centeredCropFocus({ x: .5, y: .5, size: 1 }, 1600, 900, square);
+  assert.deepEqual(centered, { x: .5, y: .5, size: 1 });
+
+  const zoomedEdge = centeredCropFocus({ x: 0, y: 1, size: .5 }, 1600, 900, square);
+  assert.equal(zoomedEdge.x, .140625);
+  assert.equal(zoomedEdge.y, .75);
+
+  const geometry = centeredCropGeometry({ x: 0, y: 1, size: .5 }, 1600, 900, square);
+  assert.deepEqual(geometry.focus, zoomedEdge);
+  assert.equal(geometry.left + geometry.focus.x * 1600 * (geometry.imageWidth / 1600), .5);
+  assert.equal(geometry.top + geometry.focus.y * 900 * (geometry.imageHeight / 900), .5);
+  assert.ok(geometry.left <= 0 && geometry.top <= 0);
+  assert.ok(geometry.left + geometry.imageWidth >= 1 && geometry.top + geometry.imageHeight >= 1);
+});
+
+test('resolves gallery crop aspect ratios', () => {
+  assert.equal(cropAspectRatio('16:9'), 16 / 9);
+  assert.equal(cropAspectRatio('original', 1200, 800), 1.5);
+  assert.equal(cropAspectRatio('original'), 4 / 3);
+});
 test('matches gallery titles without searching descriptions', () => {
   assert.equal(matchesGalleryTitle('春日花园', '花园'), true);
   assert.equal(matchesGalleryTitle('春日花园', '春日'), true);

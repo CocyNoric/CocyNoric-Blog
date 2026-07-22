@@ -16,6 +16,17 @@ const supported = new Map([
   ['image/webp', 'webp'],
 ]);
 
+type ImageUploadOptions = {
+  fieldLimit?: number;
+  preserveOriginal?: boolean;
+  domain?: 'general' | 'markdown';
+  maximumBytes?: number;
+};
+
+function imageLimitMessage(maximumBytes: number) {
+  return `图片不能超过 ${maximumBytes / 1024 / 1024} MB`;
+}
+
 export function uploadError(message: string, status = 400) {
   return Object.assign(new Error(message), { status });
 }
@@ -74,9 +85,9 @@ type ReceivedImage = {
   height?: number;
 };
 
-async function inspectGalleryImage(temporaryPath: string, originalFilename: string) {
+async function inspectGalleryImage(temporaryPath: string, originalFilename: string, maximumBytes: number) {
   const size = (await stat(temporaryPath)).size;
-  if (size > config.uploadLimit) throw uploadError('图片不能超过 20 MB', 413);
+  if (size > maximumBytes) throw uploadError(imageLimitMessage(maximumBytes), 413);
   const type = await fileTypeFromFile(temporaryPath);
   const extension = type ? supported.get(type.mime) : undefined;
   if (!type || !extension) throw uploadError('仅支持 PNG、JPEG 或 WebP 图片');
@@ -85,9 +96,10 @@ async function inspectGalleryImage(temporaryPath: string, originalFilename: stri
   return { mime: type.mime, width: metadata.width, height: metadata.height };
 }
 
-export async function receiveImage(req: Request, fieldLimit?: number, preserveOriginal?: false, domain?: 'general' | 'markdown'): Promise<StoredImage>;
-export async function receiveImage(req: Request, fieldLimit: number, preserveOriginal: true): Promise<ReceivedImage>;
-export async function receiveImage(req: Request, fieldLimit = 2, preserveOriginal = false, domain: 'general' | 'markdown' = 'general') {
+export function receiveImage(req: Request, options: ImageUploadOptions & { preserveOriginal: true }): Promise<ReceivedImage>;
+export function receiveImage(req: Request, options?: ImageUploadOptions): Promise<StoredImage>;
+export async function receiveImage(req: Request, options?: ImageUploadOptions) {
+  const { fieldLimit = 2, preserveOriginal = false, domain = 'general', maximumBytes = config.uploadLimit } = options ?? {};
   return new Promise<StoredImage | ReceivedImage>((resolve, reject) => {
     let settled = false;
     let temporaryPath: string | null = null;
@@ -115,7 +127,7 @@ export async function receiveImage(req: Request, fieldLimit = 2, preserveOrigina
 
     let busboy: Busboy.Busboy;
     try {
-      busboy = Busboy({ headers: req.headers, defParamCharset: 'utf8', limits: { files: 1, fileSize: config.uploadLimit, fields: fieldLimit } });
+      busboy = Busboy({ headers: req.headers, defParamCharset: 'utf8', limits: { files: 1, fileSize: maximumBytes, fields: fieldLimit } });
     } catch {
       reject(uploadError('上传格式无效'));
       return;
@@ -149,9 +161,9 @@ export async function receiveImage(req: Request, fieldLimit = 2, preserveOrigina
       try {
         if (!temporaryPath || !uploadPromise) throw uploadError('请选择图片');
         await uploadPromise;
-        if (fileTooLarge) throw uploadError('图片不能超过 20 MB', 413);
+        if (fileTooLarge) throw uploadError(imageLimitMessage(maximumBytes), 413);
         if (preserveOriginal) {
-          const inspected = await inspectGalleryImage(temporaryPath, originalFilename);
+          const inspected = await inspectGalleryImage(temporaryPath, originalFilename, maximumBytes);
           const savedTemporaryPath = temporaryPath;
           temporaryPath = null;
           settled = true;

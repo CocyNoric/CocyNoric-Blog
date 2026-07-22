@@ -71,6 +71,7 @@ export const api = {
     return request<CodeToolAdminProject>('/api/admin/repository/code-tools/projects', { method: 'POST', headers: writeHeaders(csrfToken), body });
   },
   deleteCodeToolProject: (slug: string, csrfToken: string) => request<void>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: writeHeaders(csrfToken) }),
+  deleteCodeToolProjectEntry: (slug: string, pathname: string, csrfToken: string) => request<CodeToolAdminProject>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}/entries?path=${encodeURIComponent(pathname)}`, { method: 'DELETE', headers: writeHeaders(csrfToken) }),
   uploadCodeTool: (file: File, csrfToken: string) => {
     const body = new FormData();
     body.append('file', file);
@@ -127,6 +128,7 @@ export const api = {
     body.append('thumbnailFocusY', String(input.thumbnailFocus?.y ?? 0.5));
     body.append('thumbnailFocusSize', String(input.thumbnailFocus?.size ?? 1));
     body.append('thumbnailAspectRatio', input.thumbnailAspectRatio ?? '1:1');
+    body.append('cropPositioning', input.cropPositioning ?? 'center');
     return request<GalleryItem>('/api/admin/gallery', {
       method: 'POST',
       headers: writeHeaders(csrfToken),

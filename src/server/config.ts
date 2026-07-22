@@ -27,6 +27,7 @@ export const config = {
   clientDist: path.join(projectRoot, 'dist', 'client'),
   sessionHours: 8,
   uploadLimit: 20 * 1024 * 1024,
+  galleryUploadLimit: 25 * 1024 * 1024,
   compressionThreshold: 5 * 1024 * 1024,
 };
 

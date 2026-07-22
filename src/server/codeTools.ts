@@ -10,26 +10,12 @@ import type { Request, Response } from 'express';
 import type { CodeToolItem, CodeToolProject, CodeToolProjectFile } from '../shared/schemas.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
+import { validateCodeToolFilename, validateCodeToolProjectPath } from './codeToolPaths.js';
 import { uploadError } from './media.js';
 
-const mimePattern = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i;
-const reservedNamePattern = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+export { validateCodeToolFilename } from './codeToolPaths.js';
 
-export function validateCodeToolFilename(input: string) {
-  const filename = input.normalize('NFC');
-  if (
-    !filename
-    || filename === '.'
-    || filename === '..'
-    || /[\0-\x1f\x7f<>:"/\\|?*]/.test(filename)
-    || /[. ]$/.test(filename)
-    || reservedNamePattern.test(filename)
-    || Buffer.byteLength(filename, 'utf8') > 240
-  ) {
-    throw uploadError('文件名无效');
-  }
-  return filename;
-}
+const mimePattern = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i;
 
 export type ReceivedCodeTool = Omit<CodeToolItem, 'id' | 'createdAt'> & {
   temporaryPath: string;
@@ -141,20 +127,8 @@ export function receiveCodeTool(req: Request) {
 const projectArchiveLimit = 64 * 1024 * 1024;
 const projectContentLimit = 100 * 1024 * 1024;
 const projectEntryLimit = 1000;
-const projectMaxDepth = 16;
-const sensitiveProjectPart = /^(?:\.git|node_modules|\.env(?:\..*)?|.*\.(?:pem|key|crt|p12|pfx))$/i;
 
-function validateProjectPath(input: string) {
-  if (input.includes('\\')) throw uploadError('项目文件路径无效');
-  const value = input.normalize('NFC');
-  if (!value || value === 'manifest.json' || value === 'index.json' || value.includes('\0') || value.startsWith('/') || /^[a-z]:/i.test(value)) throw uploadError('项目文件路径无效');
-  const parts = value.split('/');
-  if (parts.some((part) => !part || part === '.' || part === '..')) throw uploadError('项目文件路径无效');
-  if (parts.length > projectMaxDepth) throw uploadError(`项目目录最多嵌套 ${projectMaxDepth} 层`, 413);
-  if (parts.some((part) => sensitiveProjectPart.test(part))) throw uploadError('项目中不能包含敏感文件或目录');
-  for (const part of parts) validateCodeToolFilename(part);
-  return parts.join('/');
-}
+const validateProjectPath = validateCodeToolProjectPath;
 
 type ProjectPathKind = 'file' | 'directory';
 
