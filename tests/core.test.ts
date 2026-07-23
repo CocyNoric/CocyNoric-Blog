@@ -1,15 +1,16 @@
+import yauzl from 'yauzl';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import test, { after } from 'node:test';
 
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -111,6 +112,59 @@ function createProjectUpload(input: {
   const received = receiveCodeToolProject(request);
   request.end(body);
   return received;
+}
+
+class ArchiveResponse extends Writable {
+  readonly headers = new Map<string, string>();
+  readonly chunks: Buffer[] = [];
+  statusCode = 200;
+
+  set(headers: Record<string, string>) {
+    for (const [name, value] of Object.entries(headers)) this.headers.set(name.toLowerCase(), value);
+    return this;
+  }
+
+  sendStatus(status: number) {
+    this.statusCode = status;
+    this.end();
+    return this;
+  }
+
+  _write(chunk: Buffer | string, _encoding: BufferEncoding, done: (error?: Error | null) => void) {
+    this.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    done();
+  }
+}
+
+async function zipEntries(buffer: Buffer) {
+  const archive = await yauzl.fromBufferPromise(buffer, { lazyEntries: true, strictFileNames: true, validateEntrySizes: true });
+  const entries: Array<{ name: string; source: Buffer }> = [];
+  await new Promise<void>((resolve, reject) => {
+    archive.on('error', reject);
+    archive.on('end', resolve);
+    archive.on('entry', (entry) => {
+      archive.openReadStream(entry, (error, stream) => {
+        if (error || !stream) {
+          reject(error ?? new Error('无法读取 ZIP 条目'));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => {
+          entries.push({ name: entry.fileName, source: Buffer.concat(chunks) });
+          archive.readEntry();
+        });
+      });
+    });
+    archive.readEntry();
+  });
+  archive.close();
+  return entries;
+}
+
+function archiveRequest(slug: string) {
+  return Object.assign(new PassThrough(), { params: { slug } }) as Parameters<typeof serveCodeToolProjectArchiveDownload>[0];
 }
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
@@ -903,8 +957,72 @@ test('initializes an empty code-tools directory when upgrading storage layout v1
   }
 });
 
+test('streams code-tools project archives with manifest-backed files only', async () => {
+  const received = await createProjectUpload({
+    projectName: 'archive-download-project',
+    mode: 'folder',
+    files: [
+      { name: 'selected-root/README.md', source: '# Archive download\n' },
+      { name: 'selected-root/src/nested/tool.ts', source: 'export const zip = true;\n' },
+      { name: 'selected-root/empty.txt', source: '' },
+    ],
+  });
+  const project = await dataStore.addCodeToolProject(received);
+  try {
+    const request = archiveRequest(project.slug);
+    const response = new ArchiveResponse();
+    const complete = new Promise<void>((resolve, reject) => {
+      response.once('finish', resolve);
+      response.once('error', reject);
+    });
+    await serveCodeToolProjectArchiveDownload(request, response as never);
+    await complete;
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers.get('content-type'), 'application/zip');
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(response.headers.get('content-disposition') ?? '', new RegExp(`${project.slug}\\.zip`));
+    assert.equal(response.headers.has('content-length'), false);
+    assert.deepEqual(await zipEntries(Buffer.concat(response.chunks)), [
+      { name: `${project.slug}/empty.txt`, source: Buffer.alloc(0) },
+      { name: `${project.slug}/README.md`, source: Buffer.from('# Archive download\n') },
+      { name: `${project.slug}/src/nested/tool.ts`, source: Buffer.from('export const zip = true;\n') },
+    ]);
+  } finally {
+    await dataStore.deleteCodeToolProject(project.slug);
+  }
+});
+
+test('rejects inconsistent code-tools project archives before streaming', async () => {
+  const received = await createProjectUpload({
+    projectName: 'broken-archive-project',
+    mode: 'folder',
+    files: [{ name: 'selected-root/tool.txt', source: 'original' }],
+  });
+  const project = await dataStore.addCodeToolProject(received);
+  try {
+    await writeFile(dataStore.codeToolProjectFilePath(project, 'tool.txt'), 'changed');
+    const request = archiveRequest(project.slug);
+    const response = new ArchiveResponse();
+    await serveCodeToolProjectArchiveDownload(request, response as never);
+    assert.equal(response.statusCode, 404);
+    assert.equal(response.chunks.length, 0);
+    assert.equal(response.headers.size, 0);
+  } finally {
+    await dataStore.deleteCodeToolProject(project.slug);
+  }
+});
+
 test('lists repository areas and maps legacy content into project trees', async () => {
-  const overview = await repositoryOverview();
+  const received = await createProjectUpload({
+    projectName: 'repository-archive-project',
+    mode: 'folder',
+    files: [{ name: 'selected-root/src/tool.ts', source: 'export {};\n' }],
+  });
+  const project = await dataStore.addCodeToolProject(received);
+  try {
+    const overview = await repositoryOverview();
   assert.deepEqual(overview.areas.map((area) => area.key), ['markdown', 'gallery', 'code-tools']);
   assert.equal(overview.areas.find((area) => area.key === 'markdown')?.entryCount, (await dataStore.listPosts()).length);
 
@@ -918,6 +1036,15 @@ test('lists repository areas and maps legacy content into project trees', async 
   assert.deepEqual(article.entries.map((entry) => ({ name: entry.name, icon: entry.icon, href: entry.href })), [
     { name: '正文.md', icon: 'markdown', href: '/posts/welcome' },
   ]);
+  const projectRoot = await repositoryTree('code-tools');
+  assert.equal(projectRoot.entries.find((entry) => entry.path === project.slug)?.archiveHref, `/api/repository/code-tools/projects/${project.slug}/archive`);
+  const projectListing = await repositoryTree('code-tools', project.slug);
+  assert.equal(projectListing.archiveHref, `/api/repository/code-tools/projects/${project.slug}/archive`);
+  const projectNested = await repositoryTree('code-tools', `${project.slug}/src`);
+  assert.equal(projectNested.archiveHref, undefined);
+  } finally {
+    await dataStore.deleteCodeToolProject(project.slug);
+  }
 });
 
 test('rejects private, malformed, and missing repository paths', async () => {

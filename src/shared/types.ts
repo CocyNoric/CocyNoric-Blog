@@ -21,12 +21,14 @@ export type RepositoryEntry = {
   mimeType?: string | null;
   href?: string;
   download?: boolean;
+  archiveHref?: string;
 };
 
 export type RepositoryListing = {
   area: RepositoryAreaKey;
   path: string;
   parentPath: string | null;
+  archiveHref?: string;
   entries: RepositoryEntry[];
 };
 

@@ -91,12 +91,14 @@ async function galleryEntries(pathname: string) {
   })];
 }
 
+const codeToolProjectArchiveUrl = (slug: string) => `/api/repository/code-tools/projects/${encodeURIComponent(slug)}/archive`;
+
 async function codeToolEntries(pathname: string) {
   const [items, projects] = await Promise.all([dataStore.listCodeTools(), dataStore.listCodeToolProjects()]);
   const legacyDownloadUrl = (item: (typeof items)[number]) => `/api/repository/code-tools/${item.id}/download/${encodeURIComponent(item.originalFilename)}`;
   if (!pathname) {
     return [
-      ...projects.map((project) => directoryEntry({ name: project.name, path: project.slug, description: project.description || `${project.fileCount} 个文件`, updatedAt: project.updatedAt })),
+      ...projects.map((project) => directoryEntry({ name: project.name, path: project.slug, description: project.description || `${project.fileCount} 个文件`, updatedAt: project.updatedAt, archiveHref: codeToolProjectArchiveUrl(project.slug) })),
       ...items.map((item) => directoryEntry({ name: item.originalFilename, path: item.originalFilename, description: '', updatedAt: item.createdAt, href: legacyDownloadUrl(item) })),
     ];
   }
@@ -129,9 +131,14 @@ async function codeToolEntries(pathname: string) {
 }
 
 async function entriesFor(area: RepositoryAreaKey, pathname: string) {
-  if (area === 'markdown') return markdownEntries(pathname);
-  if (area === 'gallery') return galleryEntries(pathname);
-  return codeToolEntries(pathname);
+  if (area === 'markdown') return { entries: await markdownEntries(pathname) };
+  if (area === 'gallery') return { entries: await galleryEntries(pathname) };
+  const entries = await codeToolEntries(pathname);
+  const [slug, ...pathParts] = pathname.split('/');
+  return {
+    entries,
+    archiveHref: entries && slug && pathParts.length === 0 && (await dataStore.getCodeToolProject(slug)) ? codeToolProjectArchiveUrl(slug) : undefined,
+  };
 }
 
 export async function repositoryOverview(): Promise<RepositoryOverview> {
@@ -164,11 +171,12 @@ export async function repositoryOverview(): Promise<RepositoryOverview> {
 export async function repositoryTree(area: string, rawPath?: string): Promise<RepositoryListing> {
   if (!isRepositoryArea(area)) throw Object.assign(new Error('仓库目录无效'), { status: 404 });
   const pathname = validatePath(rawPath);
-  const entries = await entriesFor(area, pathname);
-  if (!entries) throw Object.assign(new Error('仓库路径不存在'), { status: 404 });
+  const result = await entriesFor(area, pathname);
+  if (!result.entries) throw Object.assign(new Error('仓库路径不存在'), { status: 404 });
+  const entries = result.entries;
   entries.sort((left, right) => Number(right.kind === 'directory') - Number(left.kind === 'directory') || left.name.localeCompare(right.name, 'zh-CN'));
   const parentPath = pathname.includes('/') ? pathname.slice(0, pathname.lastIndexOf('/')) : pathname ? '' : null;
-  return { area, path: pathname, parentPath, entries };
+  return { area, path: pathname, parentPath, archiveHref: result.archiveHref, entries };
 }
 
 export function repositoryArea(area: RepositoryAreaKey) {

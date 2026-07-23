@@ -120,6 +120,24 @@ export function RepositoryPage() {
     return <div className="repository-entry-row repository-entry-static" key={entry.path}>{content}</div>;
   };
 
+  const renderProject = (entry: RepositoryEntry) => {
+    const browse = <Link className="repository-project-link" to={encodeRepositoryPath(selected!, entry.path)}>
+      <span className="repository-project-mark"><FolderIcon /></span>
+      <span className="repository-directory-copy"><strong>{entry.name}/</strong>{appearance.showDescriptions && <small>{entry.description}</small>}{appearance.showRecentUpdates && <small>最近更新：{formatDate(entry.updatedAt)}</small>}</span>
+      <ArrowIcon />
+    </Link>;
+    return <article className="repository-project-card" key={entry.path}>
+      {browse}
+      {entry.archiveHref && <a
+        className="icon-button repository-project-download"
+        href={entry.archiveHref}
+        download
+        title={`下载 ${entry.name} 的项目压缩文件`}
+        aria-label={`下载 ${entry.name} 的项目压缩文件`}
+      ><DownloadIcon /></a>}
+    </article>;
+  };
+
   return <main id="main" className="page-shell listing-shell repository-shell" style={repositoryStyle}>
     <section className="content-section" aria-labelledby="repository-heading">
       <div className={`section-heading repository-heading repository-title-${appearance.titleAlign}`}>
@@ -152,17 +170,18 @@ export function RepositoryPage() {
 
       {!invalidDirectory && !loading && !error && selected && <>
         {!inProject && <div className={`repository-project-grid ${layoutClass} ${surfaceClass}`}>
-          {(listing?.entries ?? []).map((entry) => <Link className="repository-project-card" key={entry.path} to={encodeRepositoryPath(selected, entry.path)}>
-            <span className="repository-project-mark"><FolderIcon /></span>
-            <span className="repository-directory-copy"><strong>{entry.name}/</strong>{appearance.showDescriptions && <small>{entry.description}</small>}{appearance.showRecentUpdates && <small>最近更新：{formatDate(entry.updatedAt)}</small>}</span>
-            <ArrowIcon />
-          </Link>)}
+          {(listing?.entries ?? []).map(renderProject)}
           {!listing?.entries.length && <div className="empty-state"><h2>{heading?.name}目录为空</h2><p>这里暂时没有可公开浏览的项目。</p></div>}
         </div>}
-        {inProject && <div className={`repository-entry-list ${surfaceClass}`}>
-          {listing?.entries.map(renderEntry)}
-          {!listing?.entries.length && <div className="empty-state"><h2>目录为空</h2><p>这个目录中暂时没有公开文件。</p></div>}
-        </div>}
+        {inProject && <>
+          {listing?.archiveHref && <div className="repository-project-toolbar">
+            <a className="button secondary-button" href={listing.archiveHref} download><DownloadIcon />下载项目压缩文件</a>
+          </div>}
+          <div className={`repository-entry-list ${surfaceClass}`}>
+            {listing?.entries.map(renderEntry)}
+            {!listing?.entries.length && <div className="empty-state"><h2>目录为空</h2><p>这个目录中暂时没有公开文件。</p></div>}
+          </div>
+        </>}
       </>}
     </section>
   </main>;

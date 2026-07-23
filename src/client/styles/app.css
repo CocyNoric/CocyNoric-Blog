@@ -115,17 +115,21 @@
 .repository-breadcrumb-separator { margin-inline: 12px; color: var(--md-sys-color-outline); }
 .repository-directory-grid, .repository-file-list, .repository-project-grid, .repository-entry-list { display: grid; gap: 12px; }
 .repository-directory-grid, .repository-project-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.repository-directory, .repository-file-list > a, .repository-project-card { min-width: 0; display: flex; align-items: center; gap: 14px; border-radius: var(--radius-large); color: var(--md-sys-color-on-surface); background: var(--surface-container-low); text-decoration: none; transition: background .18s var(--motion-standard), box-shadow .18s var(--motion-standard); }
+.repository-directory, .repository-file-list > a, .repository-project-card, .repository-project-link { min-width: 0; display: flex; align-items: center; gap: 14px; border-radius: var(--radius-large); color: var(--md-sys-color-on-surface); background: var(--surface-container-low); text-decoration: none; transition: background .18s var(--motion-standard), box-shadow .18s var(--motion-standard); }
 .repository-directory { min-height: 160px; flex-wrap: wrap; padding: 24px; }
 .repository-file-list > a { min-height: 76px; padding: 16px 20px; }
-.repository-project-card { min-height: 150px; padding: 22px; }
-.repository-directory:hover, .repository-file-list > a:hover, .repository-project-card:hover { background: var(--surface-container); box-shadow: inset 0 0 0 1px var(--md-sys-color-outline-variant); }
+.repository-project-card { position: relative; min-height: 150px; padding: 0; }
+.repository-project-link { width: 100%; min-height: 150px; padding: 22px 72px 22px 22px; background: transparent; }
+.repository-directory:hover, .repository-file-list > a:hover, .repository-project-card:hover, .repository-project-card:focus-within { background: var(--surface-container); box-shadow: inset 0 0 0 1px var(--md-sys-color-outline-variant); }
 .repository-directory-copy, .repository-file-list a > span { min-width: 0; display: grid; gap: 5px; }
 .repository-directory-copy { flex: 1 1 140px; }
 .repository-directory strong, .repository-file-list strong, .repository-project-card strong { overflow: hidden; text-overflow: ellipsis; font-size: 1.05rem; }
 .repository-directory small, .repository-file-list small, .repository-project-card small { overflow: hidden; color: var(--md-sys-color-on-surface-variant); text-overflow: ellipsis; white-space: nowrap; }
 .repository-file-list a > span { flex: 1; }
-.repository-directory > svg, .repository-file-list > a > svg, .repository-project-card > svg { flex: 0 0 auto; width: 19px; color: var(--md-sys-color-primary); }
+.repository-directory > svg, .repository-file-list > a > svg, .repository-project-link > svg { flex: 0 0 auto; width: 19px; color: var(--md-sys-color-primary); }
+.repository-project-download { position: absolute; z-index: 1; top: 50%; right: 18px; transform: translateY(-50%); }
+.repository-project-link:focus-visible, .repository-project-download:focus-visible { outline: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent); outline-offset: -3px; }
+.repository-project-toolbar { display: flex; justify-content: flex-end; margin: -6px 0 16px; }
 .repository-folder-mark { position: relative; width: 42px; height: 31px; flex: 0 0 42px; border-radius: 5px 7px 7px 7px; background: var(--md-sys-color-primary-container); }
 .repository-folder-mark::before { position: absolute; content: ''; width: 18px; height: 7px; left: 0; top: -5px; border-radius: 5px 5px 0 0; background: var(--md-sys-color-primary-container); }
 .repository-project-mark { flex: 0 0 auto; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container); }
@@ -544,7 +548,11 @@
   .search-field { width: 100%; }
   .post-grid, .gallery-grid { grid-template-columns: 1fr; }
   .repository-directory { min-height: 128px; padding: 20px; }
-  .repository-project-card { min-height: 112px; padding: 18px; }
+  .repository-project-card { min-height: 112px; padding: 0; }
+  .repository-project-link { min-height: 112px; padding: 18px 64px 18px 18px; }
+  .repository-project-download { right: 12px; }
+  .repository-project-toolbar { justify-content: stretch; }
+  .repository-project-toolbar .button { width: 100%; }
   .repository-file-list > a { padding-inline: 16px; }
   .repository-entry-row { min-height: 72px; grid-template-columns: 26px minmax(0, 1fr) 18px; gap: 12px; padding: 12px 14px; }
   .repository-entry-item { grid-template-columns: minmax(0, 1fr) 44px; }

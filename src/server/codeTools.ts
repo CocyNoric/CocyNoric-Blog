@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat, unlink, rm, readdir, rename, rmdir } from 'node:fs/promises';
+import { mkdir, stat, unlink, rm, readdir, rename, rmdir, lstat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import Busboy from 'busboy';
 import { fileTypeFromFile } from 'file-type';
-import yauzl, { type Entry, type ZipFile } from 'yauzl';
+import yauzl, { type Entry, type ZipFile as YauzlZipFile } from 'yauzl';
+import { ZipFile } from 'yazl';
 import type { Request, Response } from 'express';
 import type { CodeToolItem, CodeToolProject, CodeToolProjectFile } from '../shared/schemas.js';
 import { config } from './config.js';
@@ -174,7 +176,7 @@ export type ReceivedCodeToolProject = {
 };
 
 function openProjectZip(filePath: string) {
-  return new Promise<ZipFile>((resolve, reject) => {
+  return new Promise<YauzlZipFile>((resolve, reject) => {
     yauzl.open(filePath, { lazyEntries: true, autoClose: false, strictFileNames: true, validateEntrySizes: true }, (error, zipFile) => {
       if (error || !zipFile) reject(uploadError('ZIP 文件无效'));
       else resolve(zipFile);
@@ -187,7 +189,7 @@ async function validateProjectZip(filePath: string) {
   zipFile.close();
 }
 
-function copyZipEntry(zipFile: ZipFile, entry: Entry, destination: string) {
+function copyZipEntry(zipFile: YauzlZipFile, entry: Entry, destination: string) {
   return new Promise<void>((resolve, reject) => {
     zipFile.openReadStream(entry, (error, stream) => {
       if (error || !stream) {
@@ -391,6 +393,57 @@ function contentDisposition(filename: string) {
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
+type VerifiedProjectFile = {
+  path: string;
+  relativePath: string;
+  size: number;
+};
+
+async function verifiedProjectFile(project: CodeToolProject, file: CodeToolProjectFile): Promise<VerifiedProjectFile | null> {
+  let relativePath: string;
+  try {
+    relativePath = validateProjectPath(file.relativePath);
+  } catch {
+    return null;
+  }
+
+  const filesRoot = path.join(dataStore.codeToolProjectRootPath(project), 'files');
+  const ancestors = [filesRoot];
+  for (const part of relativePath.split('/').slice(0, -1)) ancestors.push(path.join(ancestors.at(-1)!, part));
+  try {
+    for (const ancestor of ancestors) {
+      const details = await lstat(ancestor);
+      if (!details.isDirectory() || details.isSymbolicLink()) return null;
+    }
+    const filePath = dataStore.codeToolProjectFilePath(project, relativePath);
+    const details = await lstat(filePath);
+    if (details.isSymbolicLink() || !details.isFile() || details.size !== file.size) return null;
+    return { path: filePath, relativePath, size: details.size };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function verifiedProjectFiles(project: CodeToolProject) {
+  if (project.fileCount !== project.files.length || project.fileCount > projectEntryLimit || project.totalBytes > projectContentLimit) return null;
+  const paths = new Set<string>();
+  let totalBytes = 0;
+  const files: VerifiedProjectFile[] = [];
+  for (const file of project.files) {
+    const verified = await verifiedProjectFile(project, file);
+    if (!verified) return null;
+    const key = verified.relativePath.toLocaleLowerCase('en-US');
+    if (paths.has(key)) return null;
+    paths.add(key);
+    totalBytes += verified.size;
+    if (totalBytes > projectContentLimit) return null;
+    files.push(verified);
+  }
+  if (totalBytes !== project.totalBytes) return null;
+  return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath, 'en'));
+}
+
 export async function serveCodeToolDownload(req: Request, res: Response) {
   const id = req.params.id;
   const filename = req.params.filename;
@@ -438,17 +491,17 @@ export async function serveCodeToolProjectDownload(req: Request, res: Response) 
   const rawPath = req.params.path;
   const relativePath = Array.isArray(rawPath) ? rawPath.join('/') : rawPath;
   if (typeof slug !== 'string' || typeof relativePath !== 'string') { res.sendStatus(404); return; }
-  const safePath = validateProjectPath(relativePath);
+  let safePath: string;
+  try {
+    safePath = validateProjectPath(relativePath);
+  } catch {
+    res.sendStatus(404);
+    return;
+  }
   const result = await dataStore.getCodeToolProjectFile(slug, safePath);
   if (!result) { res.sendStatus(404); return; }
-  const filePath = dataStore.codeToolProjectFilePath(result.project, result.file.relativePath);
-  try {
-    const details = await stat(filePath);
-    if (!details.isFile() || details.size !== result.file.size) { res.sendStatus(404); return; }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') { res.sendStatus(404); return; }
-    throw error;
-  }
+  const file = await verifiedProjectFile(result.project, result.file);
+  if (!file) { res.sendStatus(404); return; }
   res.set({
     'Content-Type': 'application/octet-stream',
     'Content-Disposition': contentDisposition(path.basename(result.file.relativePath)),
@@ -456,7 +509,54 @@ export async function serveCodeToolProjectDownload(req: Request, res: Response) 
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
   });
-  const stream = createReadStream(filePath);
+  const stream = createReadStream(file.path);
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+}
+
+export async function serveCodeToolProjectArchiveDownload(req: Request, res: Response) {
+  const slug = req.params.slug;
+  if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    res.sendStatus(404);
+    return;
+  }
+  const project = await dataStore.getCodeToolProject(slug);
+  if (!project) {
+    res.sendStatus(404);
+    return;
+  }
+  const files = await verifiedProjectFiles(project);
+  if (!files) {
+    res.sendStatus(404);
+    return;
+  }
+
+  const archive = new ZipFile();
+  let finished = false;
+  const abort = () => {
+    if (finished) return;
+    finished = true;
+    (archive.outputStream as Readable).destroy();
+  };
+  req.once('aborted', abort);
+  res.once('close', abort);
+  archive.outputStream.once('error', () => res.destroy());
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Disposition': contentDisposition(`${project.slug}.zip`),
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  archive.outputStream.pipe(res);
+  for (const file of files) {
+    const archivePath = `${project.slug}/${file.relativePath}`;
+    if (file.size === 0) {
+      archive.addBuffer(Buffer.alloc(0), archivePath, { mode: 0o100644, compress: true });
+      continue;
+    }
+    const source = createReadStream(file.path, { start: 0, end: file.size - 1 });
+    source.once('error', () => res.destroy());
+    archive.addReadStream(source, archivePath, { size: file.size, mode: 0o100644, compress: true });
+  }
+  archive.end();
 }

@@ -3,7 +3,7 @@ import { dataStore } from '../dataStore.js';
 import { renderMarkdown } from '../markdown.js';
 import { createThemeTokens } from '../theme.js';
 import { matchesGalleryTitle } from '../../shared/search.js';
-import { serveCodeToolDownload, serveCodeToolProjectDownload } from '../codeTools.js';
+import { serveCodeToolDownload, serveCodeToolProjectArchiveDownload, serveCodeToolProjectDownload } from '../codeTools.js';
 import { repositoryOverview, repositoryTree } from '../repositoryStore.js';
 
 export const publicRouter = Router();
@@ -40,6 +40,9 @@ publicRouter.get('/repository/code-tools', async (_req, res, next) => {
   }
 });
 
+publicRouter.get('/repository/code-tools/projects/:slug/archive', async (req, res, next) => {
+  try { await serveCodeToolProjectArchiveDownload(req, res); } catch (error) { next(error); }
+});
 publicRouter.get('/repository/code-tools/projects/:slug/download/*path', async (req, res, next) => {
   try { await serveCodeToolProjectDownload(req, res); } catch (error) { next(error); }
 });
