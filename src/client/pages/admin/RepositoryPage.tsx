@@ -183,7 +183,7 @@ export function AdminRepositoryPage() {
         </div>}
         <div className="repository-file-drop">
           <span className="repository-domain-icon"><UploadIcon /></span>
-          <span><strong>{files.length ? (mode === 'folder' ? `已选择 ${files.length} 个文件` : files[0].name) : (mode === 'folder' ? '选择项目文件夹' : '选择 ZIP 文件')}</strong><small>{files.length ? `${formatFileSize(files.reduce((sum, file) => sum + file.size, 0))} · ${zipMode === 'keep' && mode === 'zip' ? '压缩包将原样保留' : '保留项目目录结构'}` : mode === 'folder' ? '最多 1000 个文件，单个文件最大 20 MB' : '最大 64 MB；默认安全解压为项目'}</small></span>
+          <span><strong>{files.length ? (mode === 'folder' ? `已选择 ${files.length} 个文件` : files[0].name) : (mode === 'folder' ? '选择项目文件夹' : '选择 ZIP 文件')}</strong><small>{files.length ? `${formatFileSize(files.reduce((sum, file) => sum + file.size, 0))} · ${zipMode === 'keep' && mode === 'zip' ? '压缩包将原样保留' : '保留项目目录结构'}` : mode === 'folder' ? '最多 1000 个文件，单个文件最大 20 MB' : '最大 128 MB；默认安全解压为项目'}</small></span>
           <label className="button secondary-button import-control">{mode === 'folder' ? '选择文件夹' : '选择 ZIP'}<input type="file" accept={mode === 'zip' ? '.zip,application/zip' : undefined} multiple={mode === 'folder'} {...(mode === 'folder' ? { webkitdirectory: '' } : {})} disabled={uploading} onChange={(event) => { chooseFiles(event.target.files); event.target.value = ''; }} /></label>
           <button className="button primary-button" type="button" disabled={!files.length || uploading} onClick={() => void upload()}>{uploading ? '正在上传…' : '上传项目'}</button>
         </div>

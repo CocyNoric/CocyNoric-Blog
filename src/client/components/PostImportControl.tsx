@@ -5,7 +5,7 @@ import { UploadIcon } from './Icons.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const acceptedImports = new Set(['.md', '.markdown', '.zip']);
-const importLimit = 64 * 1024 * 1024;
+const importLimit = 128 * 1024 * 1024;
 
 type PostImportControlProps = {
   className?: string;
@@ -25,7 +25,7 @@ export function PostImportControl({ className = '', label = '导入文章', onEr
     const extension = `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`;
     if (!acceptedImports.has(extension)) { onError('仅支持 .md、.markdown 或 .zip 文件'); return; }
     const limit = extension === '.zip' ? importLimit : 1024 * 1024;
-    if (file.size > limit) { onError(extension === '.zip' ? 'ZIP 文件不能超过 64 MB' : 'Markdown 文件不能超过 1 MB'); return; }
+    if (file.size > limit) { onError(extension === '.zip' ? 'ZIP 文件不能超过 128 MB' : 'Markdown 文件不能超过 1 MB'); return; }
     setImporting(true);
     onError('');
     try {

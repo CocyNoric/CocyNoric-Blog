@@ -126,7 +126,7 @@ export function receiveCodeTool(req: Request) {
   });
 }
 
-const projectArchiveLimit = 64 * 1024 * 1024;
+const projectArchiveLimit = 128 * 1024 * 1024;
 const projectContentLimit = 100 * 1024 * 1024;
 const projectEntryLimit = 1000;
 
@@ -265,7 +265,7 @@ async function promoteSingleProjectRoot(directory: string) {
   await rmdir(root);
 }
 
-async function collectProjectFiles(root: string, current = ''): Promise<CodeToolProjectFile[]> {
+async function collectProjectFiles(root: string, current = '', fileSizeLimit = config.uploadLimit): Promise<CodeToolProjectFile[]> {
   const directory = path.join(root, current);
   const entries = await readdir(directory, { withFileTypes: true });
   const files: CodeToolProjectFile[] = [];
@@ -274,10 +274,10 @@ async function collectProjectFiles(root: string, current = ''): Promise<CodeTool
     const relativePath = current ? `${current}/${entry.name}` : entry.name;
     const safePath = validateProjectPath(relativePath);
     const target = path.join(root, ...safePath.split('/'));
-    if (entry.isDirectory()) files.push(...await collectProjectFiles(root, safePath));
+    if (entry.isDirectory()) files.push(...await collectProjectFiles(root, safePath, fileSizeLimit));
     else if (entry.isFile()) {
       const details = await stat(target);
-      if (details.size > config.uploadLimit) throw uploadError('项目文件不能超过 20 MB', 413);
+      if (details.size > fileSizeLimit) throw uploadError(`项目文件不能超过 ${fileSizeLimit / (1024 * 1024)} MB`, 413);
       const hash = createHash('sha256');
       await new Promise<void>((resolve, reject) => {
         const stream = createReadStream(target);
@@ -342,14 +342,18 @@ export function receiveCodeToolProject(req: Request) {
       if (mode === 'zip' && !zipPath) zipPath = path.join(temporaryDirectory, '.upload.zip');
       const target = mode === 'zip' ? zipPath! : path.join(temporaryDirectory, ...relativePath.split('/'));
       uploadPromises.push((async () => {
+        let fileSize = 0;
         await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
         stream.on('data', (chunk: Buffer) => {
+          fileSize += chunk.length;
           total += chunk.length;
-          if (total > projectContentLimit) {
+          if (mode === 'folder' && fileSize > config.uploadLimit) {
+            stream.destroy(uploadError('项目文件不能超过 20 MB', 413));
+          } else if (mode === 'folder' && total > projectContentLimit) {
             stream.destroy(uploadError('项目总大小不能超过 100 MB', 413));
           }
         });
-        stream.on('limit', () => stream.destroy(uploadError('项目文件不能超过 64 MB', 413)));
+        stream.on('limit', () => stream.destroy(uploadError(mode === 'zip' ? 'ZIP 文件不能超过 128 MB' : '项目文件不能超过 128 MB', 413)));
         await pipeline(stream, createWriteStream(target, { flags: 'wx', mode: 0o600 }));
       })().catch(fail));
     });
@@ -366,7 +370,7 @@ export function receiveCodeToolProject(req: Request) {
         if (mode === 'zip') {
           if (!zipPath) throw uploadError('请选择 ZIP 文件');
           const archiveDetails = await stat(zipPath);
-          if (archiveDetails.size > projectArchiveLimit) throw uploadError('ZIP 文件不能超过 64 MB', 413);
+          if (archiveDetails.size > projectArchiveLimit) throw uploadError('ZIP 文件不能超过 128 MB', 413);
           if (zipMode === 'extract') {
             await extractProjectZip(zipPath, temporaryDirectory);
             await unlink(zipPath);
@@ -376,7 +380,7 @@ export function receiveCodeToolProject(req: Request) {
             await rename(zipPath, path.join(temporaryDirectory, zipFilename.endsWith('.zip') ? zipFilename : `${zipFilename}.zip`));
           }
         }
-        const files = await collectProjectFiles(temporaryDirectory);
+        const files = await collectProjectFiles(temporaryDirectory, '', mode === 'zip' && zipMode === 'keep' ? projectArchiveLimit : config.uploadLimit);
         if (files.length === 0) throw uploadError('项目中没有可上传的文件');
         const now = new Date().toISOString();
         const project = { id: randomUUID(), slug: projectSlug(projectName), name: projectName.slice(0, 120), description: description.slice(0, 240), createdAt: now, updatedAt: now, fileCount: files.length, totalBytes: files.reduce((sum, file) => sum + file.size, 0), files };
@@ -426,7 +430,14 @@ async function verifiedProjectFile(project: CodeToolProject, file: CodeToolProje
 }
 
 async function verifiedProjectFiles(project: CodeToolProject) {
-  if (project.fileCount !== project.files.length || project.fileCount > projectEntryLimit || project.totalBytes > projectContentLimit) return null;
+  const retainedZip = project.files.length === 1 && project.files[0]?.relativePath.toLocaleLowerCase('en-US').endsWith('.zip');
+  const totalLimit = retainedZip ? projectArchiveLimit : projectContentLimit;
+  if (
+    project.fileCount !== project.files.length
+    || project.fileCount > projectEntryLimit
+    || project.totalBytes > totalLimit
+    || (!retainedZip && project.files.some((file) => file.size > config.uploadLimit))
+  ) return null;
   const paths = new Set<string>();
   let totalBytes = 0;
   const files: VerifiedProjectFile[] = [];
@@ -437,7 +448,7 @@ async function verifiedProjectFiles(project: CodeToolProject) {
     if (paths.has(key)) return null;
     paths.add(key);
     totalBytes += verified.size;
-    if (totalBytes > projectContentLimit) return null;
+    if (totalBytes > totalLimit) return null;
     files.push(verified);
   }
   if (totalBytes !== project.totalBytes) return null;

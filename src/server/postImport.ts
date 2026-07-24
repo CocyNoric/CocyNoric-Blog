@@ -17,7 +17,7 @@ import { config } from './config.js';
 import { dataStore } from './dataStore.js';
 import { processImageFile, uploadError } from './media.js';
 
-const archiveLimit = 64 * 1024 * 1024;
+const archiveLimit = 128 * 1024 * 1024;
 const archiveContentLimit = 100 * 1024 * 1024;
 const markdownLimit = 1024 * 1024;
 const entryLimit = 128;
@@ -148,94 +148,108 @@ async function entryFile(zipFile: ZipFile, entry: Entry, destination: string, co
   await pipeline(stream, limiter, createWriteStream(destination, { flags: 'wx', mode: 0o600 }));
 }
 
-async function readArchive(filePath: string) {
+async function scanArchive(filePath: string, visit: (zipFile: ZipFile, entry: Entry, normalized: string) => Promise<void>) {
   let zipFile: ZipFile;
   try {
     zipFile = await openZip(filePath);
   } catch (error) {
     throw archiveError(error as Error);
   }
-  const temporaryFiles = new Set<string>();
-  let markdown: { filename: string; source: Buffer } | null = null;
-  const images = new Map<string, ImportedImage>();
+
   const seenPaths = new Set<string>();
   let entries = 0;
-  let imageCount = 0;
-  let declaredSize = 0;
-  let actualSize = 0;
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      zipFile.close();
+      reject(archiveError(error));
+    };
+    zipFile.on('error', fail);
+    zipFile.on('end', () => {
+      if (settled) return;
+      settled = true;
+      zipFile.close();
+      resolve();
+    });
+    zipFile.on('entry', (entry: Entry) => {
+      void (async () => {
+        entries += 1;
+        if (entries > entryLimit) throw importError('ZIP 最多包含 128 个条目', 413);
+        if ((entry.generalPurposeBitFlag & 0x1) !== 0) throw importError('不支持加密的 ZIP 条目');
+        if (isSymlink(entry)) throw importError('ZIP 中不能包含符号链接');
+
+        const normalized = safeArchivePath(entry.fileName);
+        const key = normalized.toLocaleLowerCase('en-US');
+        if (normalized && seenPaths.has(key)) throw importError('ZIP 中包含重复路径');
+        if (normalized) seenPaths.add(key);
+        if (entry.uncompressedSize > 1024 * 1024 && entry.compressedSize > 0 && entry.uncompressedSize / entry.compressedSize > 1000) {
+          throw importError('ZIP 压缩比例异常');
+        }
+        if (ignoredArchivePath(normalized) || !normalized || entry.fileName.endsWith('/')) {
+          zipFile.readEntry();
+          return;
+        }
+
+        await visit(zipFile, entry, normalized);
+        zipFile.readEntry();
+      })().catch(fail);
+    });
+    zipFile.readEntry();
+  });
+}
+
+async function readArchive(filePath: string) {
+  let markdown: { filename: string; source: Buffer } | null = null;
+  const archiveEntries = new Map<string, { sourcePath: string; expectedMime: string | null }>();
+
+  await scanArchive(filePath, async (zipFile, entry, normalized) => {
+    const key = normalized.toLocaleLowerCase('en-US');
+    const extension = extensionOf(normalized);
+    const expectedMime = imageTypes.get(extension) ?? null;
+    archiveEntries.set(key, { sourcePath: normalized, expectedMime });
+    if (!markdownExtensions.has(extension)) return;
+    if (markdown) throw importError('ZIP 中只能包含一个 Markdown 文件');
+    if (entry.uncompressedSize > markdownLimit) throw importError('Markdown 文件不能超过 1 MB', 413);
+    markdown = { filename: normalized, source: await entryBuffer(zipFile, entry, markdownLimit) };
+  });
+
+  const article = markdown as { filename: string; source: Buffer } | null;
+  if (!article) throw importError('ZIP 中必须包含一个 Markdown 文件');
+  const parsed = matter(decodeMarkdown(article.source));
+  if (Buffer.byteLength(parsed.content, 'utf8') > markdownLimit) throw importError('Markdown 正文不能超过 1 MB', 413);
+  const { references } = collectImageReferences(parsed.content, article.filename);
+  const requiredImages = new Map<string, { sourcePath: string; expectedMime: string }>();
+  for (const reference of references) {
+    const image = archiveEntries.get(reference.sourcePath);
+    const url = parsed.content.slice(reference.start, reference.end);
+    if (!image) throw importError(`ZIP 中缺少 Markdown 引用的图片：${url}`);
+    if (!image.expectedMime) throw importError(`ZIP 中不支持 Markdown 引用的图片：${url}`);
+    requiredImages.set(reference.sourcePath, { sourcePath: image.sourcePath, expectedMime: image.expectedMime });
+  }
+  if (requiredImages.size > imageLimit) throw importError('ZIP 最多包含 64 张图片', 413);
+
+  const temporaryFiles = new Set<string>();
+  const images = new Map<string, ImportedImage>();
+  let actualSize = article.source.length;
   const consumeSize = (size: number) => {
     actualSize += size;
     if (actualSize > archiveContentLimit) throw importError('ZIP 解压后的总大小不能超过 100 MB', 413);
   };
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const fail = (error: Error) => {
-        if (settled) return;
-        settled = true;
-        zipFile.close();
-        reject(archiveError(error));
-      };
-      zipFile.on('error', fail);
-      zipFile.on('end', () => {
-        if (settled) return;
-        settled = true;
-        zipFile.close();
-        resolve();
-      });
-      zipFile.on('entry', (entry: Entry) => {
-        void (async () => {
-          entries += 1;
-          if (entries > entryLimit) throw importError('ZIP 最多包含 128 个条目', 413);
-          if ((entry.generalPurposeBitFlag & 0x1) !== 0) throw importError('不支持加密的 ZIP 条目');
-          if (isSymlink(entry)) throw importError('ZIP 中不能包含符号链接');
-
-          const normalized = safeArchivePath(entry.fileName);
-          const key = normalized.toLocaleLowerCase('en-US');
-          if (normalized && seenPaths.has(key)) throw importError('ZIP 中包含重复路径');
-          if (normalized) seenPaths.add(key);
-          if (ignoredArchivePath(normalized)) {
-            zipFile.readEntry();
-            return;
-          }
-
-          declaredSize += entry.uncompressedSize;
-          if (declaredSize > archiveContentLimit) throw importError('ZIP 解压后的总大小不能超过 100 MB', 413);
-          if (entry.uncompressedSize > 1024 * 1024 && entry.compressedSize > 0 && entry.uncompressedSize / entry.compressedSize > 1000) {
-            throw importError('ZIP 压缩比例异常');
-          }
-          if (entry.fileName.endsWith('/')) {
-            zipFile.readEntry();
-            return;
-          }
-
-          const extension = extensionOf(normalized);
-          if (markdownExtensions.has(extension)) {
-            if (markdown) throw importError('ZIP 中只能包含一个 Markdown 文件');
-            if (entry.uncompressedSize > markdownLimit) throw importError('Markdown 文件不能超过 1 MB', 413);
-            const source = await entryBuffer(zipFile, entry, markdownLimit);
-            consumeSize(source.length);
-            markdown = { filename: normalized, source };
-          } else {
-            const expectedMime = imageTypes.get(extension);
-            if (!expectedMime) throw importError(`ZIP 中包含不支持的文件：${normalized}`);
-            imageCount += 1;
-            if (imageCount > imageLimit) throw importError('ZIP 最多包含 64 张图片', 413);
-            if (entry.uncompressedSize > config.uploadLimit) throw importError('ZIP 中的图片不能超过 20 MB', 413);
-            const temporaryPath = path.join(dataStore.paths.tmp, `${randomUUID()}.import-image`);
-            temporaryFiles.add(temporaryPath);
-            await entryFile(zipFile, entry, temporaryPath, consumeSize);
-            images.set(key, { sourcePath: normalized, temporaryPath, expectedMime });
-          }
-          zipFile.readEntry();
-        })().catch(fail);
-      });
-      zipFile.readEntry();
+    await scanArchive(filePath, async (zipFile, entry, normalized) => {
+      const key = normalized.toLocaleLowerCase('en-US');
+      const required = requiredImages.get(key);
+      if (!required) return;
+      if (entry.uncompressedSize > config.uploadLimit) throw importError('ZIP 中的图片不能超过 20 MB', 413);
+      const temporaryPath = path.join(dataStore.paths.tmp, `${randomUUID()}.import-image`);
+      temporaryFiles.add(temporaryPath);
+      await entryFile(zipFile, entry, temporaryPath, consumeSize);
+      images.set(key, { ...required, temporaryPath });
     });
-
-    const article = markdown as { filename: string; source: Buffer } | null;
-    if (!article) throw importError('ZIP 中必须包含一个 Markdown 文件');
+    if (images.size !== requiredImages.size) throw importError('ZIP 中缺少 Markdown 引用的图片');
     return { markdown: article, images, temporaryFiles };
   } catch (error) {
     await Promise.all([...temporaryFiles].map((temporaryPath) => unlink(temporaryPath).catch(() => undefined)));
@@ -434,7 +448,7 @@ export async function importPostFile(filePath: string, filename: string): Promis
     return createImportedPost(await readFile(filePath), path.basename(filename));
   }
   if (extension !== '.zip') throw importError('仅支持 .md、.markdown 或 .zip 文件');
-  if ((await stat(filePath)).size > archiveLimit) throw importError('ZIP 文件不能超过 64 MB', 413);
+  if ((await stat(filePath)).size > archiveLimit) throw importError('ZIP 文件不能超过 128 MB', 413);
   const archive = await readArchive(filePath);
   return createImportedPost(archive.markdown.source, archive.markdown.filename, archive.images);
 }
@@ -496,7 +510,7 @@ export async function receivePostImport(req: Request) {
       });
       req.pipe(busboy);
     });
-    if (tooLarge) throw importError('ZIP 文件不能超过 64 MB', 413);
+    if (tooLarge) throw importError('ZIP 文件不能超过 128 MB', 413);
     return await importPostFile(temporaryPath, filename);
   } finally {
     await unlink(temporaryPath).catch(() => undefined);

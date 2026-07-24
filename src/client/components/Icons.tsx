@@ -19,3 +19,4 @@ export const FolderIcon = (props: IconProps) => <Icon {...props}><path d="M3 6.5
 export const FileIcon = (props: IconProps) => <Icon {...props}><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/></Icon>;
 export const UploadIcon = (props: IconProps) => <Icon {...props}><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></Icon>;
 export const DownloadIcon = (props: IconProps) => <Icon {...props}><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></Icon>;
+export const DragHandleIcon = (props: IconProps) => <Icon {...props}><circle cx="8" cy="5" r=".8" fill="currentColor"/><circle cx="16" cy="5" r=".8" fill="currentColor"/><circle cx="8" cy="12" r=".8" fill="currentColor"/><circle cx="16" cy="12" r=".8" fill="currentColor"/><circle cx="8" cy="19" r=".8" fill="currentColor"/><circle cx="16" cy="19" r=".8" fill="currentColor"/></Icon>;

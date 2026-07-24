@@ -4,7 +4,7 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
 import sharp from 'sharp';
-import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
@@ -523,7 +523,20 @@ export class DataStore {
   }
 
   async listGallery() {
-    return [...(await this.readGalleryIndex()).items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return [...(await this.readGalleryIndex()).items];
+  }
+
+  async reorderGallery(raw: unknown) {
+    const input = galleryOrderInputSchema.parse(raw);
+    return this.mutateGallery(async () => {
+      const index = await this.readGalleryIndex();
+      if (input.ids.length !== index.items.length) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      const byId = new Map(index.items.map((item) => [item.id, item]));
+      if (input.ids.some((id) => !byId.has(id))) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      const items = input.ids.map((id) => byId.get(id)!);
+      await this.writeGalleryIndex({ ...index, items });
+      return items;
+    });
   }
 
   async getGalleryItem(id: string) {

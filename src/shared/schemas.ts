@@ -450,6 +450,12 @@ const legacyGalleryItemBaseSchema = z.object({
 
 export const galleryIdSchema = z.string().regex(/^\d{8}$/);
 
+export const galleryOrderInputSchema = z.object({
+  ids: z.array(galleryIdSchema).superRefine((ids, context) => {
+    if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: '图片排序包含重复 ID' });
+  }),
+});
+
 const galleryFilenameSchema = z.string()
   .min(1)
   .max(255)
@@ -561,7 +567,7 @@ const codeToolProjectSlugSchema = z.string()
 export const codeToolProjectFileSchema = z.object({
   id: z.string().uuid(),
   relativePath: z.string().min(1).max(1024),
-  size: z.number().int().min(0).max(20 * 1024 * 1024),
+  size: z.number().int().min(0).max(128 * 1024 * 1024),
   mimeType: z.string().regex(/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i).max(127).nullable(),
   mimeSource: z.enum(['detected', 'declared']).nullable(),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -577,7 +583,7 @@ export const codeToolProjectSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   fileCount: z.number().int().min(0).max(1000),
-  totalBytes: z.number().int().min(0).max(100 * 1024 * 1024),
+  totalBytes: z.number().int().min(0).max(128 * 1024 * 1024),
   files: codeToolProjectFileSchema.array().max(1000),
 });
 
@@ -606,6 +612,7 @@ export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
 export type GalleryIndex = z.infer<typeof galleryIndexSchema>;
+export type GalleryOrderInput = z.infer<typeof galleryOrderInputSchema>;
 export type GalleryInput = z.infer<typeof galleryInputSchema>;
 export type CodeToolItem = z.infer<typeof codeToolItemSchema>;
 export type CodeToolsIndex = z.infer<typeof codeToolsIndexSchema>;

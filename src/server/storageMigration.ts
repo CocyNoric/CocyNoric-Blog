@@ -68,7 +68,7 @@ async function buildMigratedGallery(paths: StoragePaths) {
   const legacyItems = legacyGalleryItemSchema.array().parse(raw);
   const positions = new Map(legacyItems.map((item, index) => [item.id, index]));
   const ordered = [...legacyItems].sort((left, right) => {
-    const created = left.createdAt.localeCompare(right.createdAt);
+    const created = right.createdAt.localeCompare(left.createdAt);
     return created || (positions.get(left.id) ?? 0) - (positions.get(right.id) ?? 0);
   });
   const migrated: GalleryItem[] = [];

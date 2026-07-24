@@ -135,6 +135,11 @@ export const api = {
       body,
     });
   },
+  reorderGallery: (ids: string[], csrfToken: string) => request<GalleryItem[]>('/api/admin/gallery/order', {
+    method: 'PUT',
+    headers: writeHeaders(csrfToken),
+    body: JSON.stringify({ ids }),
+  }),
   updateGalleryItem: (id: string, input: GalleryInput, csrfToken: string) => request<GalleryItem>(`/api/admin/gallery/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: writeHeaders(csrfToken),

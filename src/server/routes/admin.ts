@@ -1,6 +1,6 @@
 import { rm, unlink } from 'node:fs/promises';
 import { Router } from 'express';
-import { galleryInputSchema, galleryUploadInputSchema, postInputSchema, previewSchema } from '../../shared/schemas.js';
+import { galleryInputSchema, galleryOrderInputSchema, galleryUploadInputSchema, postInputSchema, previewSchema } from '../../shared/schemas.js';
 import { requireAuth, requireWriteProtection } from '../auth.js';
 import { config } from '../config.js';
 import { dataStore } from '../dataStore.js';
@@ -217,6 +217,14 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
     res.status(201).json(item);
   } catch (error) {
     if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
+    next(error);
+  }
+});
+
+adminRouter.put('/gallery/order', requireWriteProtection, async (req, res, next) => {
+  try {
+    res.json(await dataStore.reorderGallery(galleryOrderInputSchema.parse(req.body)));
+  } catch (error) {
     next(error);
   }
 });

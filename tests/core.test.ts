@@ -1,10 +1,10 @@
 import yauzl from 'yauzl';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, truncate, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { PassThrough, Writable } from 'node:stream';
+import { PassThrough, Readable, Writable } from 'node:stream';
 import test, { after } from 'node:test';
 
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
@@ -112,6 +112,29 @@ function createProjectUpload(input: {
   const received = receiveCodeToolProject(request);
   request.end(body);
   return received;
+}
+
+function createStreamingProjectUpload(input: {
+  projectName: string;
+  filename: string;
+  source: Iterable<Buffer>;
+  zipMode?: 'extract' | 'keep';
+}) {
+  const boundary = `----cocynoric-streamed-project-${createHash('sha256').update(input.projectName).digest('hex').slice(0, 12)}`;
+  const field = (name: string, value: string) => Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
+  function* parts() {
+    yield field('projectName', input.projectName);
+    yield field('description', '流式测试项目');
+    yield field('mode', 'zip');
+    yield field('zipMode', input.zipMode ?? 'keep');
+    yield Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${input.filename}"\r\nContent-Type: application/zip\r\n\r\n`);
+    yield* input.source;
+    yield Buffer.from(`\r\n--${boundary}--\r\n`);
+  }
+  const request = Object.assign(Readable.from(parts()), {
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  }) as Parameters<typeof receiveCodeToolProject>[0];
+  return receiveCodeToolProject(request);
 }
 
 class ArchiveResponse extends Writable {
@@ -479,6 +502,40 @@ test('allocates unique gallery IDs for concurrent uploads', async () => {
   await Promise.all(uploads.map((item) => dataStore.deleteGalleryItem(item.id)));
 });
 
+test('persists gallery order and rejects stale or invalid reorder requests', async () => {
+  const uploads = await Promise.all(['first', 'second', 'third'].map(async (name) => {
+    const temporaryPath = path.join(dataStore.paths.tmp, `order-${name}.png`);
+    await writeFile(temporaryPath, png);
+    return dataStore.addGalleryItem({ temporaryPath, originalFilename: `${name}.png`, title: name, description: '' });
+  }));
+  const requested = [uploads[0].id, uploads[2].id, uploads[1].id];
+  const reordered = await dataStore.reorderGallery({ ids: requested });
+  assert.deepEqual(reordered.map((item) => item.id), requested);
+  assert.deepEqual((await dataStore.listGallery()).map((item) => item.id), requested);
+  const index = JSON.parse(await readFile(dataStore.paths.gallery, 'utf8')) as { items: Array<{ id: string }> };
+  assert.deepEqual(index.items.map((item) => item.id), requested);
+
+  const updated = await dataStore.updateGalleryItem(uploads[2].id, { title: 'updated', description: '', cardFocus: uploads[2].cardFocus, cardAspectRatio: uploads[2].cardAspectRatio, thumbnailFocus: uploads[2].thumbnailFocus, thumbnailAspectRatio: uploads[2].thumbnailAspectRatio, cropPositioning: uploads[2].cropPositioning });
+  assert.equal(updated?.title, 'updated');
+  assert.deepEqual((await dataStore.listGallery()).map((item) => item.id), requested);
+  await assert.rejects(dataStore.reorderGallery({ ids: [uploads[0].id, uploads[0].id, uploads[1].id] }));
+  await assert.rejects(
+    dataStore.reorderGallery({ ids: [uploads[0].id, uploads[1].id] }),
+    (error: Error & { code?: string }) => error.code === 'CONFLICT',
+  );
+  await assert.rejects(
+    dataStore.reorderGallery({ ids: [...requested.slice(0, 2), '99999999'] }),
+    (error: Error & { code?: string }) => error.code === 'CONFLICT',
+  );
+
+  const nextTemporary = path.join(dataStore.paths.tmp, 'order-newest.png');
+  await writeFile(nextTemporary, png);
+  const newest = await dataStore.addGalleryItem({ temporaryPath: nextTemporary, originalFilename: 'newest.png', title: 'newest', description: '' });
+  assert.deepEqual((await dataStore.listGallery()).map((item) => item.id), [newest.id, ...requested]);
+  await dataStore.deleteGalleryItem(uploads[2].id);
+  assert.deepEqual((await dataStore.listGallery()).map((item) => item.id), [newest.id, uploads[0].id, uploads[1].id]);
+  await Promise.all([dataStore.deleteGalleryItem(newest.id), dataStore.deleteGalleryItem(uploads[0].id), dataStore.deleteGalleryItem(uploads[1].id)]);
+});
 test('updates gallery metadata without changing media fields', async () => {
   const temporaryPath = path.join(dataStore.paths.tmp, '原图.png');
   await writeFile(temporaryPath, png);
@@ -561,6 +618,60 @@ test('imports ZIP images once and rewrites repeated relative links', async () =>
     ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.markdownMedia, name))),
     unlink(file),
   ]);
+});
+
+test('imports only Markdown-referenced ZIP images and ignores auxiliary files', async () => {
+  const file = path.join(dataStore.paths.tmp, 'article-with-auxiliary-files.zip');
+  await writeFile(file, createZip([
+    { name: 'post/article.md', source: '---\ntitle: ZIP Article\n---\n![one](../images/photo.png)\n\n![two](../images/photo.png)\n' },
+    { name: 'images/photo.png', source: png },
+    { name: '.gitignore', source: 'node_modules\n' },
+    { name: 'src/tool.ts', source: 'export const ignored = true;\n' },
+    { name: 'images/unused.png', source: 'not a png' },
+  ]));
+  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
+
+  const post = await importPostFile(file, 'article-with-auxiliary-files.zip');
+  const urls = [...post.markdown.matchAll(/\/media\/[a-f0-9-]+\.png/g)].map((match) => match[0]);
+  assert.equal(post.status, 'draft');
+  assert.equal(urls.length, 2);
+  assert.equal(urls[0], urls[1]);
+  const mediaAfter = (await readdir(dataStore.paths.markdownMedia)).filter((name) => !mediaBefore.has(name));
+  assert.equal(mediaAfter.length, 1);
+
+  await Promise.all([
+    dataStore.deletePost(post.id),
+    ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.markdownMedia, name))),
+    unlink(file),
+  ]);
+});
+
+test('rejects unsupported Markdown image references and oversized article ZIP files', async () => {
+  const unsupportedFile = path.join(dataStore.paths.tmp, 'unsupported-image-reference.zip');
+  const oversizedFile = path.join(dataStore.paths.tmp, 'oversized-article-import.zip');
+  await writeFile(unsupportedFile, createZip([
+    { name: 'article.md', source: '![unsupported](image.gif)' },
+    { name: 'image.gif', source: 'GIF89a' },
+  ]));
+  await assert.rejects(importPostFile(unsupportedFile, 'unsupported-image-reference.zip'), /不支持 Markdown 引用的图片/);
+  await writeFile(oversizedFile, 'not a zip');
+  await truncate(oversizedFile, 128 * 1024 * 1024 + 1);
+  await assert.rejects(
+    importPostFile(oversizedFile, 'oversized-article-import.zip'),
+    (error: Error & { status?: number }) => error.status === 413 && error.message === 'ZIP 文件不能超过 128 MB',
+  );
+  await Promise.all([unlink(unsupportedFile), unlink(oversizedFile)]);
+});
+test('accepts article ZIP files over the former 64 MB limit when auxiliary files are unused', async () => {
+  const file = path.join(dataStore.paths.tmp, 'large-article-with-auxiliary-files.zip');
+  await writeFile(file, createZip([
+    { name: 'article.md', source: '# Large archive\n\nOnly this Markdown should be read.\n' },
+    { name: 'repository/archive.bin', source: Buffer.alloc(65 * 1024 * 1024) },
+  ]));
+
+  const post = await importPostFile(file, 'large-article-with-auxiliary-files.zip');
+  assert.equal(post.title, 'Large archive');
+  await Promise.all([dataStore.deletePost(post.id), unlink(file)]);
 });
 
 test('rejects unsafe, duplicate, and spoofed ZIP entries without residue', async () => {
@@ -868,6 +979,54 @@ test('extracts and preserves ZIP code-tools projects safely', async () => {
   ]);
 });
 
+test('supports retained ZIP projects up to 128 MB and rejects larger archives', async () => {
+  const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
+  const validZipHeader = createZip([]);
+  const chunkSize = 1024 * 1024;
+  const retainedSize = 65 * 1024 * 1024;
+  function* retainedZip() {
+    for (let written = 0; written < retainedSize - validZipHeader.length; written += chunkSize) {
+      yield Buffer.alloc(Math.min(chunkSize, retainedSize - validZipHeader.length - written));
+    }
+    yield validZipHeader;
+  }
+  const received = await createStreamingProjectUpload({
+    projectName: 'large-retained-zip-project',
+    filename: 'large.zip',
+    source: retainedZip(),
+  });
+  assert.equal(received.project.files[0]?.size, retainedSize);
+  const project = await dataStore.addCodeToolProject(received);
+  assert.equal(project.totalBytes, retainedSize);
+  await dataStore.deleteCodeToolProject(project.slug);
+
+  function* oversizedZip() {
+    for (let written = 0; written <= 128 * 1024 * 1024; written += chunkSize) yield Buffer.alloc(chunkSize);
+    yield validZipHeader;
+  }
+  await assert.rejects(
+    createStreamingProjectUpload({ projectName: 'oversized-retained-zip-project', filename: 'oversized.zip', source: oversizedZip() }),
+    (error: Error & { status?: number }) => error.status === 413 && error.message === 'ZIP 文件不能超过 128 MB',
+  );
+  assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
+});
+
+test('rejects extracted ZIP projects over the 100 MB content limit', async () => {
+  const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
+  const archive = createZip([
+    { name: 'first.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+    { name: 'second.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+    { name: 'third.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+    { name: 'fourth.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+    { name: 'fifth.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+    { name: 'sixth.txt', source: Buffer.alloc(20 * 1024 * 1024) },
+  ]);
+  await assert.rejects(
+    createProjectUpload({ projectName: 'oversized-extracted-zip-project', mode: 'zip', files: [{ name: 'large.zip', source: archive, contentType: 'application/zip' }] }),
+    (error: Error & { status?: number }) => error.status === 413 && error.message === '项目解压后的总大小不能超过 100 MB',
+  );
+  assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
+});
 test('rejects invalid and empty extracted ZIP projects without residue', async () => {
   const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
   await assert.rejects(createProjectUpload({
