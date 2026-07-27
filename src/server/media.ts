@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { rename, stat, unlink } from 'node:fs/promises';
+import { lstat, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Busboy from 'busboy';
@@ -190,11 +190,58 @@ export async function serveGalleryMedia(req: Request, res: Response) {
     return;
   }
   const item = await dataStore.getGalleryItem(id);
-  if (!item || item.originalFilename !== filename) {
+  if (!item || (item.originalFilename !== filename && item.displayFilename !== filename)) {
     res.sendStatus(404);
     return;
   }
-  streamMedia(dataStore.galleryFilePath(item), filename, res);
+  const filePath = filename === item.displayFilename
+    ? dataStore.galleryDisplayFilePath(item)
+    : dataStore.galleryFilePath(item);
+  streamMedia(filePath, filename, res);
+}
+
+export async function serveMarkdownMedia(req: Request, res: Response) {
+  const wildcard = req.params.path as unknown;
+  const segments = Array.isArray(wildcard)
+    ? wildcard
+    : typeof wildcard === 'string'
+      ? wildcard.split('/')
+      : [];
+  const [projectName, ...relativeParts] = segments;
+  if (
+    !projectName
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectName)
+    || !relativeParts.length
+    || relativeParts.some((part) => !part || part === '.' || part === '..' || part.includes('\\') || part.includes('\0'))
+    || !/\.(?:png|jpe?g|webp)$/i.test(relativeParts.at(-1) ?? '')
+  ) {
+    res.sendStatus(404);
+    return;
+  }
+  const projectRoot = path.join(dataStore.paths.markdown, projectName);
+  const filePath = path.join(projectRoot, ...relativeParts);
+  const relative = path.relative(projectRoot, filePath);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    res.sendStatus(404);
+    return;
+  }
+  try {
+    let current = projectRoot;
+    for (const segment of relativeParts) {
+      current = path.join(current, segment);
+      if ((await lstat(current)).isSymbolicLink()) {
+        res.sendStatus(404);
+        return;
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.sendStatus(404);
+      return;
+    }
+    throw error;
+  }
+  streamMedia(filePath, relativeParts.at(-1)!, res);
 }
 
 function streamMedia(filePath: string, filename: string, res: Response) {

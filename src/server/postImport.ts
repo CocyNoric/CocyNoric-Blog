@@ -15,7 +15,7 @@ import yauzl, { type Entry, type ZipFile } from 'yauzl';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
-import { processImageFile, uploadError } from './media.js';
+import { uploadError } from './media.js';
 
 const archiveLimit = 128 * 1024 * 1024;
 const archiveContentLimit = 100 * 1024 * 1024;
@@ -388,9 +388,17 @@ async function availableSlug(preferred: string) {
   return `${base.slice(0, 100 - String(suffix).length - 1)}-${suffix}`;
 }
 
-async function createImportedPost(source: Buffer, filename: string, images?: Map<string, ImportedImage>) {
-  const createdMedia: string[] = [];
+function commonProjectRoot(paths: string[]) {
+  const first = paths[0]?.split('/')[0];
+  if (!first || !paths.every((value) => value.startsWith(`${first}/`))) return '';
+  return `${first}/`;
+}
 
+function projectRelativePath(sourcePath: string, root: string) {
+  return root && sourcePath.startsWith(root) ? sourcePath.slice(root.length) : sourcePath;
+}
+
+async function createImportedPost(source: Buffer, filename: string, images?: Map<string, ImportedImage>) {
   try {
     const decoded = decodeMarkdown(source);
     const parsed = matter(decoded);
@@ -403,18 +411,22 @@ async function createImportedPost(source: Buffer, filename: string, images?: Map
     const frontMatterSlug = typeof parsed.data.slug === 'string' ? slugCandidate(parsed.data.slug) : '';
     const slug = await availableSlug(frontMatterSlug || slugCandidate(title) || slugCandidate(path.basename(filename, extensionOf(filename))));
     const urls = new Map<string, string>();
+    const referencedPaths = [...new Set(references.map((reference) => reference.sourcePath))];
+    const sourcePaths = [filename, ...referencedPaths.map((sourcePath) => images?.get(sourcePath)?.sourcePath ?? sourcePath)];
+    const projectRoot = commonProjectRoot(sourcePaths);
+    const markdownRelativePath = projectRelativePath(filename, projectRoot);
+    const assets: Array<{ temporaryPath: string; relativePath: string }> = [];
 
     if (images) {
       for (const image of images.values()) {
         const actual = await fileTypeFromFile(image.temporaryPath);
         if (actual?.mime !== image.expectedMime) throw importError(`图片类型与扩展名不一致：${image.sourcePath}`);
       }
-      for (const sourcePath of new Set(references.map((reference) => reference.sourcePath))) {
+      for (const sourcePath of referencedPaths) {
         const image = images.get(sourcePath)!;
-        const saved = await processImageFile(image.temporaryPath, 'markdown');
-        images.delete(sourcePath);
-        createdMedia.push(saved.filePath);
-        urls.set(sourcePath, saved.url);
+        const relativePath = projectRelativePath(image.sourcePath, projectRoot);
+        assets.push({ temporaryPath: image.temporaryPath, relativePath });
+        urls.set(sourcePath, dataStore.postMediaUrl(slug, relativePath));
       }
     }
 
@@ -423,18 +435,18 @@ async function createImportedPost(source: Buffer, filename: string, images?: Map
       markdown = `${markdown.slice(0, reference.start)}${urls.get(reference.sourcePath)}${markdown.slice(reference.end)}`;
     }
 
-    return await dataStore.savePost({
-      slug,
-      title,
-      excerpt: typeof parsed.data.excerpt === 'string' ? parsed.data.excerpt.trim().slice(0, 320) : '',
-      date: normalizedDate(parsed.data.date),
-      status: 'draft',
-      tags: normalizedTags(parsed.data.tags),
-      markdown,
-    });
-  } catch (error) {
-    await Promise.all(createdMedia.map((filePath) => unlink(filePath).catch(() => undefined)));
-    throw error;
+    return await dataStore.savePost(
+      {
+        slug,
+        title,
+        excerpt: typeof parsed.data.excerpt === 'string' ? parsed.data.excerpt.trim().slice(0, 320) : '',
+        date: normalizedDate(parsed.data.date),
+        status: 'draft',
+        tags: normalizedTags(parsed.data.tags),
+        markdown,
+      },
+      { markdownRelativePath, assets },
+    );
   } finally {
     if (images) await Promise.all([...images.values()].map((image) => unlink(image.temporaryPath).catch(() => undefined)));
   }

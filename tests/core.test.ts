@@ -423,7 +423,9 @@ test('rejects stale post saves and duplicate slugs', async () => {
   const original = await dataStore.getPostBySlug('welcome', true);
   assert.ok(original);
 
-  const file = path.join(dataStore.paths.posts, `${original.id}.md`);
+  const project = await dataStore.postProjectListing(original.id);
+  assert.ok(project);
+  const file = project.filePath;
   await writeFile(file, `${await readFile(file, 'utf8')}\n磁盘外部修改。\n`, 'utf8');
 
   await assert.rejects(
@@ -490,6 +492,28 @@ test('stores gallery files under sequential identifiers without reusing deleted 
   const second = await dataStore.addGalleryItem({ temporaryPath: secondTemporary, originalFilename: '第二张.png', title: '第二张', description: '' });
   assert.equal(second.id, '00000002');
   await dataStore.deleteGalleryItem(second.id);
+});
+
+test('keeps gallery originals and creates WebP display copies above 5 MB', async () => {
+  const temporaryPath = path.join(dataStore.paths.tmp, 'large-original.png');
+  const original = Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]);
+  await writeFile(temporaryPath, original);
+  const item = await dataStore.addGalleryItem({
+    temporaryPath,
+    originalFilename: 'large-original.png',
+    title: '大图',
+    description: '',
+    width: 1,
+    height: 1,
+  });
+
+  assert.equal(item.displayFilename, 'display.webp');
+  assert.equal(item.url, `/media/gallery/${item.id}/display.webp`);
+  assert.deepEqual(await readFile(dataStore.galleryFilePath(item)), original);
+  const display = await readFile(dataStore.galleryDisplayFilePath(item));
+  assert.ok(display.length > 0);
+  assert.ok(display.length < original.length);
+  await dataStore.deleteGalleryItem(item.id);
 });
 
 test('allocates unique gallery IDs for concurrent uploads', async () => {
@@ -569,6 +593,7 @@ test('imports standalone Markdown as a normalized draft and avoids slug conflict
   assert.equal(second.slug, 'welcome-3');
   assert.deepEqual(first.tags, ['test']);
   assert.match(first.markdown, /Imported body/);
+  assert.equal((await dataStore.postProjectListing(first.id))?.markdownRelativePath, 'article.md');
 
   await Promise.all([dataStore.deletePost(first.id), dataStore.deletePost(second.id), unlink(firstPath), unlink(secondPath)]);
 });
@@ -603,19 +628,17 @@ test('imports ZIP images once and rewrites repeated relative links', async () =>
     { name: 'post/article.md', source: '---\ntitle: ZIP Article\n---\n![one](../images/photo.png)\n\n![two](../images/photo.png)\n' },
     { name: 'images/photo.png', source: png },
   ]));
-  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
-
   const post = await importPostFile(file, 'article.zip');
-  const urls = [...post.markdown.matchAll(/\/media\/[a-f0-9-]+\.png/g)].map((match) => match[0]);
+  const urls = [...post.markdown.matchAll(/\/media\/markdown\/zip-article\/images\/photo\.png/g)].map((match) => match[0]);
   assert.equal(post.status, 'draft');
   assert.equal(urls.length, 2);
   assert.equal(urls[0], urls[1]);
-  const mediaAfter = (await readdir(dataStore.paths.markdownMedia)).filter((name) => !mediaBefore.has(name));
-  assert.equal(mediaAfter.length, 1);
+  const project = await dataStore.postProjectListing(post.id);
+  assert.equal(project?.markdownRelativePath, 'post/article.md');
+  assert.deepEqual(await readFile(path.join(project!.projectRoot, 'images', 'photo.png')), png);
 
   await Promise.all([
     dataStore.deletePost(post.id),
-    ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.markdownMedia, name))),
     unlink(file),
   ]);
 });
@@ -623,25 +646,23 @@ test('imports ZIP images once and rewrites repeated relative links', async () =>
 test('imports only Markdown-referenced ZIP images and ignores auxiliary files', async () => {
   const file = path.join(dataStore.paths.tmp, 'article-with-auxiliary-files.zip');
   await writeFile(file, createZip([
-    { name: 'post/article.md', source: '---\ntitle: ZIP Article\n---\n![one](../images/photo.png)\n\n![two](../images/photo.png)\n' },
-    { name: 'images/photo.png', source: png },
+    { name: 'project/docs/article.md', source: '---\ntitle: ZIP Article\n---\n![one](assets/nested/photo.png)\n\n![two](assets/nested/photo.png)\n' },
+    { name: 'project/docs/assets/nested/photo.png', source: png },
     { name: '.gitignore', source: 'node_modules\n' },
     { name: 'src/tool.ts', source: 'export const ignored = true;\n' },
-    { name: 'images/unused.png', source: 'not a png' },
+    { name: 'project/docs/assets/unused.png', source: 'not a png' },
   ]));
-  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
 
   const post = await importPostFile(file, 'article-with-auxiliary-files.zip');
-  const urls = [...post.markdown.matchAll(/\/media\/[a-f0-9-]+\.png/g)].map((match) => match[0]);
+  const urls = [...post.markdown.matchAll(/\/media\/markdown\/zip-article\/docs\/assets\/nested\/photo\.png/g)].map((match) => match[0]);
   assert.equal(post.status, 'draft');
   assert.equal(urls.length, 2);
   assert.equal(urls[0], urls[1]);
-  const mediaAfter = (await readdir(dataStore.paths.markdownMedia)).filter((name) => !mediaBefore.has(name));
-  assert.equal(mediaAfter.length, 1);
+  const project = await dataStore.postProjectListing(post.id, 'docs/assets/nested');
+  assert.deepEqual(project?.entries.map((entry) => entry.name), ['photo.png']);
 
   await Promise.all([
     dataStore.deletePost(post.id),
-    ...mediaAfter.map((name) => unlink(path.join(dataStore.paths.markdownMedia, name))),
     unlink(file),
   ]);
 });
@@ -676,7 +697,7 @@ test('accepts article ZIP files over the former 64 MB limit when auxiliary files
 
 test('rejects unsafe, duplicate, and spoofed ZIP entries without residue', async () => {
   const tmpBefore = new Set(await readdir(dataStore.paths.tmp));
-  const mediaBefore = new Set(await readdir(dataStore.paths.markdownMedia));
+  const markdownBefore = new Set(await readdir(dataStore.paths.markdown));
   const cases = [
     { name: 'invalid.zip', source: Buffer.from('not a zip'), error: /ZIP 文件无效/ },
     { name: 'traversal.zip', source: createZip([{ name: '../article.md', source: '# unsafe' }]), error: /路径穿越/ },
@@ -694,7 +715,7 @@ test('rejects unsafe, duplicate, and spoofed ZIP entries without residue', async
   }
 
   assert.deepEqual(new Set(await readdir(dataStore.paths.tmp)), tmpBefore);
-  assert.deepEqual(new Set(await readdir(dataStore.paths.markdownMedia)), mediaBefore);
+  assert.deepEqual(new Set(await readdir(dataStore.paths.markdown)), markdownBefore);
 });
 
 test('validates cross-platform gallery filenames without renaming safe names', () => {
@@ -706,7 +727,7 @@ test('validates cross-platform gallery filenames without renaming safe names', (
   assert.throws(() => validateGalleryFilename('photo.jpg', 'image/png'), /扩展名不一致/);
 });
 
-test('migrates legacy storage without rewriting content or security data', async () => {
+test('migrates legacy storage into article projects without changing security data', async () => {
   const legacyRoot = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-legacy-'));
   const legacyStore = new DataStore(legacyRoot);
   const legacyId = '123e4567-e89b-42d3-a456-426614174000';
@@ -735,15 +756,16 @@ test('migrates legacy storage without rewriting content or security data', async
     ]);
 
     await legacyStore.initialize();
+    const migratedPostPath = path.join(legacyStore.paths.markdown, 'legacy-post', 'legacy-post.md');
     const [postAfter, items, adminAfter, sessionAfter] = await Promise.all([
-      readFile(path.join(legacyStore.paths.posts, `${postId}.md`)),
+      readFile(migratedPostPath, 'utf8'),
       legacyStore.listGallery(),
       readFile(legacyStore.paths.admin, 'utf8'),
       readFile(path.join(legacyStore.paths.sessions, 'session.json'), 'utf8'),
     ]);
 
-    assert.deepEqual(postAfter, postSource);
-    assert.deepEqual(await readFile(path.join(legacyStore.paths.markdownMedia, mediaName)), png);
+    assert.match(postAfter, new RegExp(`/media/markdown/legacy-post/assets/${mediaName}`));
+    assert.deepEqual(await readFile(path.join(legacyStore.paths.markdown, 'legacy-post', 'assets', mediaName)), png);
     assert.equal(items[0]?.id, '00000001');
     assert.equal(items[0]?.legacyId, legacyId);
     assert.equal(items[0]?.originalFilename, mediaName);
@@ -770,7 +792,7 @@ test('detects migration conflicts before moving legacy posts', async () => {
   const postName = '123e4567-e89b-42d3-a456-426614174012.md';
   const postSource = Buffer.from(`---\nid: 123e4567-e89b-42d3-a456-426614174012\nslug: conflict\ntitle: 冲突验证\nexcerpt: 保留源文件\ndate: 2026-07-01\nupdatedAt: 2026-07-01T00:00:00.000Z\nstatus: published\ntags: []\n---\n正文 ![](/media/${mediaName})\n`);
   const conflictingTarget = path.join(legacyStore.paths.galleryRoot, '00000001', mediaName);
-  const migratedPost = path.join(legacyStore.paths.posts, postName);
+  const migratedPost = path.join(legacyStore.paths.markdown, 'conflict', 'conflict.md');
 
   try {
     await Promise.all([
@@ -813,7 +835,7 @@ test('validates an existing gallery index before moving legacy posts', async () 
 
     await assert.rejects(legacyStore.initialize());
     assert.deepEqual(await readFile(path.join(legacyRoot, 'posts', postName)), postSource);
-    await assert.rejects(readFile(path.join(legacyStore.paths.posts, postName)), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+    await assert.rejects(readFile(path.join(legacyStore.paths.markdown, 'legacy-post', 'legacy-post.md')), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
   } finally {
     await rm(legacyRoot, { recursive: true, force: true });
   }
@@ -1108,9 +1130,41 @@ test('initializes an empty code-tools directory when upgrading storage layout v1
       }) + '\n'),
     ]);
     await store.initialize();
-    assert.deepEqual(JSON.parse(await readFile(store.paths.storageLayout, 'utf8')), { version: 2 });
+    assert.deepEqual(JSON.parse(await readFile(store.paths.storageLayout, 'utf8')), { version: 3 });
     assert.deepEqual(JSON.parse(await readFile(store.paths.codeToolsIndex, 'utf8')), { version: 2, items: [], projects: [] });
     assert.deepEqual(await readdir(store.paths.codeToolsItems), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('archives unassigned flat Markdown media inside a single article project', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-layout-v2-'));
+  const store = new DataStore(root);
+  const postId = '123e4567-e89b-42d3-a456-426614174030';
+  const referenced = '123e4567-e89b-42d3-a456-426614174031.png';
+  const unassigned = '123e4567-e89b-42d3-a456-426614174032.png';
+  try {
+    await Promise.all([
+      mkdir(store.paths.posts, { recursive: true }),
+      mkdir(store.paths.markdownMedia, { recursive: true }),
+      mkdir(store.paths.galleryRoot, { recursive: true }),
+      mkdir(store.paths.codeToolsItems, { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(store.paths.gallery, `${JSON.stringify({ version: 1, nextId: 1, items: [] })}\n`),
+      writeFile(store.paths.codeToolsIndex, `${JSON.stringify({ version: 2, items: [], projects: [] })}\n`),
+      writeFile(store.paths.storageLayout, '{"version":2}\n'),
+      writeFile(store.paths.initialized, '1'),
+      writeFile(path.join(store.paths.posts, `${postId}.md`), `---\nid: ${postId}\nslug: archived-media\ntitle: 迁移媒体\nexcerpt: ''\ndate: '2026-07-01'\nupdatedAt: '2026-07-01T00:00:00.000Z'\nstatus: published\ntags: []\n---\n![](/media/${referenced})\n`),
+      writeFile(path.join(store.paths.markdownMedia, referenced), png),
+      writeFile(path.join(store.paths.markdownMedia, unassigned), png),
+    ]);
+
+    await store.initialize();
+    assert.deepEqual(await readFile(path.join(store.paths.markdown, 'archived-media', 'assets', referenced)), png);
+    assert.deepEqual(await readFile(path.join(store.paths.markdown, 'archived-media', 'assets', 'legacy', unassigned)), png);
+    await assert.rejects(readdir(store.paths.markdownMedia), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1193,7 +1247,7 @@ test('lists repository areas and maps legacy content into project trees', async 
   const article = await repositoryTree('markdown', 'welcome');
   assert.equal(article.parentPath, '');
   assert.deepEqual(article.entries.map((entry) => ({ name: entry.name, icon: entry.icon, href: entry.href })), [
-    { name: '正文.md', icon: 'markdown', href: '/posts/welcome' },
+    { name: 'welcome.md', icon: 'markdown', href: '/posts/welcome' },
   ]);
   const projectRoot = await repositoryTree('code-tools');
   assert.equal(projectRoot.entries.find((entry) => entry.path === project.slug)?.archiveHref, `/api/repository/code-tools/projects/${project.slug}/archive`);

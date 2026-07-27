@@ -155,9 +155,10 @@ export const api = {
     headers: writeHeaders(csrfToken),
     body: JSON.stringify(settings),
   }),
-  uploadPostImage: (file: File, csrfToken: string) => {
+  uploadPostImage: (postId: string, file: File, csrfToken: string) => {
     const body = new FormData();
     body.append('image', file);
+    body.append('postId', postId);
     return request<{ url: string }>('/api/admin/media', {
       method: 'POST',
       headers: writeHeaders(csrfToken),

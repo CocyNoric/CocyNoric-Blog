@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import { cleanExpiredSessions } from './auth.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
-import { serveGalleryMedia, serveMedia } from './media.js';
+import { serveGalleryMedia, serveMarkdownMedia, serveMedia } from './media.js';
 import { adminRouter } from './routes/admin.js';
 import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/public.js';
@@ -34,6 +34,9 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/media/gallery/:id/:filename', (req, res, next) => {
   void serveGalleryMedia(req, res).catch(next);
+});
+app.get('/media/markdown/{*path}', (req, res, next) => {
+  void serveMarkdownMedia(req, res).catch(next);
 });
 app.get('/media/:filename', (req, res, next) => {
   void serveMedia(req, res).catch(next);

@@ -112,6 +112,39 @@ function normalizeMeta(data: Record<string, unknown>) {
   };
 }
 
+function validatePostRelativePath(value: string) {
+  const normalized = value.normalize('NFC').replace(/^\.\//, '');
+  const parts = normalized.split('/');
+  if (
+    !normalized
+    || normalized.includes('\\')
+    || normalized.includes('\0')
+    || normalized.startsWith('/')
+    || /^[a-z]:/i.test(normalized)
+    || parts.some((part) => !part || part === '.' || part === '..' || /[\x00-\x1f\x7f<>:"|?*]/.test(part) || /[. ]$/.test(part))
+  ) {
+    throw Object.assign(new Error('文章项目路径无效'), { status: 400 });
+  }
+  return parts.join('/');
+}
+
+function encodedPath(value: string) {
+  return value.split('/').map(encodeURIComponent).join('/');
+}
+
+type PostStorageAsset = {
+  temporaryPath: string;
+  relativePath: string;
+};
+
+type LocatedPost = {
+  post: AdminPost;
+  filePath: string;
+  projectRoot: string;
+  projectName: string;
+  markdownRelativePath: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -163,6 +196,7 @@ export class DataStore {
   private writes = new Map<string, Promise<void>>();
   private settingsMutation = Promise.resolve();
   private galleryMutation = Promise.resolve();
+  private postMutation = Promise.resolve();
   private codeToolsMutation = Promise.resolve();
   private initialization: Promise<void> | null = null;
 
@@ -198,6 +232,7 @@ export class DataStore {
 
   private async performInitialization() {
     await migrateStorageLayout(this.paths);
+    await this.ensureGalleryDisplayFiles();
 
     if (!(await this.exists(this.paths.settings))) {
       await this.writeSettings(defaultSettings);
@@ -547,6 +582,46 @@ export class DataStore {
     return path.join(this.paths.galleryRoot, item.id, item.originalFilename);
   }
 
+  galleryDisplayFilePath(item: Pick<GalleryItem, 'id' | 'originalFilename' | 'displayFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, item.displayFilename ?? item.originalFilename);
+  }
+
+  private galleryDisplayFilename(originalFilename: string) {
+    return originalFilename.toLocaleLowerCase('en-US') === 'display.webp' ? 'display-compressed.webp' : 'display.webp';
+  }
+
+  private async writeGalleryDisplayFile(source: string, destination: string) {
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    try {
+      await sharp(source).keepMetadata().webp({ quality: 82, effort: 4 }).toFile(temporary);
+      await rename(temporary, destination);
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async ensureGalleryDisplayFiles() {
+    await this.mutateGallery(async () => {
+      const index = await this.readGalleryIndex();
+      let changed = false;
+      for (const item of index.items) {
+        const original = this.galleryFilePath(item);
+        if ((await stat(original)).size <= config.compressionThreshold) continue;
+        const displayFilename = item.displayFilename ?? this.galleryDisplayFilename(item.originalFilename);
+        const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+        if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
+        const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
+        if (item.displayFilename !== displayFilename || item.url !== expectedUrl) {
+          item.displayFilename = displayFilename;
+          item.url = expectedUrl;
+          changed = true;
+        }
+      }
+      if (changed) await this.writeGalleryIndex(index);
+    });
+  }
+
   async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
     return this.mutateGallery(async () => {
       const index = await this.readGalleryIndex();
@@ -564,11 +639,15 @@ export class DataStore {
       await rename(input.temporaryPath, destination);
 
       try {
+        const compress = (await stat(destination)).size > config.compressionThreshold;
+        const displayFilename = compress ? this.galleryDisplayFilename(input.originalFilename) : undefined;
+        if (displayFilename) await this.writeGalleryDisplayFile(destination, path.join(directory, displayFilename));
         const item = galleryItemSchema.parse({
           ...input,
           temporaryPath: undefined,
           id,
-          url: `/media/gallery/${id}/${encodeURIComponent(input.originalFilename)}`,
+          ...(displayFilename ? { displayFilename } : {}),
+          url: `/media/gallery/${id}/${encodeURIComponent(displayFilename ?? input.originalFilename)}`,
           createdAt: new Date().toISOString(),
         });
         await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
@@ -612,17 +691,53 @@ export class DataStore {
     });
   }
 
-  async listPosts(includeDrafts = false) {
-    const files = (await readdir(this.paths.posts)).filter((name) => name.endsWith('.md'));
-    const posts: AdminPost[] = [];
-    for (const file of files) {
+  private mutatePosts<T>(mutation: () => Promise<T>) {
+    const result = this.postMutation.then(mutation, mutation);
+    this.postMutation = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private async articleMarkdownFiles(directory = this.paths.markdown, relativeDirectory = ''): Promise<string[]> {
+    const files: string[] = [];
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!relativeDirectory && (entry.name.startsWith('.') || entry.name === 'posts' || entry.name === 'media')) continue;
+      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) files.push(...await this.articleMarkdownFiles(filePath, relativePath));
+      else if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) files.push(relativePath);
+    }
+    return files;
+  }
+
+  private async locatedPosts(): Promise<LocatedPost[]> {
+    const located: LocatedPost[] = [];
+    for (const relativePath of await this.articleMarkdownFiles()) {
+      const [projectName, ...projectPath] = relativePath.split('/');
+      if (!projectName || !projectPath.length) continue;
+      const filePath = path.join(this.paths.markdown, ...relativePath.split('/'));
       try {
-        posts.push(await this.readPostFile(path.join(this.paths.posts, file)));
+        located.push({
+          post: await this.readPostFile(filePath),
+          filePath,
+          projectRoot: path.join(this.paths.markdown, projectName),
+          projectName,
+          markdownRelativePath: projectPath.join('/'),
+        });
       } catch (error) {
-        console.error(`无法读取文章 ${file}:`, error);
+        console.error(`无法读取文章 ${relativePath}:`, error);
       }
     }
-    return posts
+    return located;
+  }
+
+  private async locatePostById(id: string) {
+    return (await this.locatedPosts()).find((entry) => entry.post.id === id) ?? null;
+  }
+
+  async listPosts(includeDrafts = false) {
+    return (await this.locatedPosts())
+      .map((entry) => entry.post)
       .filter((post) => includeDrafts || post.status === 'published')
       .sort((a, b) => b.date.localeCompare(a.date));
   }
@@ -634,50 +749,144 @@ export class DataStore {
   }
 
   async getPostById(id: string) {
-    const file = path.join(this.paths.posts, `${id}.md`);
-    if (!(await this.exists(file))) return null;
-    return this.readPostFile(file);
+    return (await this.locatePostById(id))?.post ?? null;
   }
 
-  async savePost(raw: Omit<PostInput, 'version'> & { version?: string }) {
-    const input = postInputSchema.parse(raw);
-    const id = input.id ?? randomUUID();
-    const target = path.join(this.paths.posts, `${id}.md`);
-    const existing = await this.getPostById(id);
+  postMediaUrl(projectName: string, relativePath: string) {
+    const safeProject = validatePostRelativePath(projectName);
+    const safePath = validatePostRelativePath(relativePath);
+    return `/media/markdown/${encodedPath(safeProject)}/${encodedPath(safePath)}`;
+  }
 
-    if (existing && input.version !== existing.version) {
-      const error = new Error('文章已在磁盘上更改，请重新载入后再保存');
-      Object.assign(error, { code: 'CONFLICT' });
-      throw error;
-    }
+  async savePost(
+    raw: Omit<PostInput, 'version'> & { version?: string },
+    storage?: { markdownRelativePath: string; assets?: PostStorageAsset[] },
+  ) {
+    return this.mutatePosts(async () => {
+      const input = postInputSchema.parse(raw);
+      const id = input.id ?? randomUUID();
+      const existing = await this.locatePostById(id);
 
-    const duplicate = (await this.listPosts(true)).find((post) => post.slug === input.slug && post.id !== id);
-    if (duplicate) {
-      const error = new Error('文章路径已存在');
-      Object.assign(error, { code: 'DUPLICATE_SLUG' });
-      throw error;
-    }
+      if (existing && input.version !== existing.post.version) {
+        const error = new Error('文章已在磁盘上更改，请重新载入后再保存');
+        Object.assign(error, { code: 'CONFLICT' });
+        throw error;
+      }
+      if (existing && storage) throw Object.assign(new Error('已存在的文章不能重新导入项目文件'), { status: 409 });
 
-    const meta: PostMeta = postMetaSchema.parse({
-      id,
-      slug: input.slug,
-      title: input.title,
-      excerpt: input.excerpt,
-      date: input.date,
-      updatedAt: new Date().toISOString(),
-      status: input.status,
-      tags: [...new Set(input.tags)],
+      const duplicate = (await this.listPosts(true)).find((post) => post.slug === input.slug && post.id !== id);
+      if (duplicate) {
+        const error = new Error('文章路径已存在');
+        Object.assign(error, { code: 'DUPLICATE_SLUG' });
+        throw error;
+      }
+
+      const projectRoot = existing?.projectRoot ?? path.join(this.paths.markdown, input.slug);
+      const markdownRelativePath = existing?.markdownRelativePath
+        ?? validatePostRelativePath(storage?.markdownRelativePath ?? `${input.slug}.md`);
+      const target = existing?.filePath ?? path.join(projectRoot, ...markdownRelativePath.split('/'));
+      const isNew = !existing;
+      if (isNew) {
+        try {
+          await lstat(projectRoot);
+          const error = new Error('文章项目目录已存在');
+          Object.assign(error, { code: 'DUPLICATE_SLUG' });
+          throw error;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+
+      const assets = (storage?.assets ?? []).map((asset) => ({ ...asset, relativePath: validatePostRelativePath(asset.relativePath) }));
+      const occupied = new Set([markdownRelativePath.toLocaleLowerCase('en-US')]);
+      for (const asset of assets) {
+        const key = asset.relativePath.toLocaleLowerCase('en-US');
+        if (occupied.has(key)) throw Object.assign(new Error('文章项目中包含重复路径'), { status: 400 });
+        occupied.add(key);
+      }
+
+      const meta: PostMeta = postMetaSchema.parse({
+        id,
+        slug: input.slug,
+        title: input.title,
+        excerpt: input.excerpt,
+        date: input.date,
+        updatedAt: new Date().toISOString(),
+        status: input.status,
+        tags: [...new Set(input.tags)],
+      });
+      const source = matter.stringify(input.markdown.trimEnd() + '\n', meta);
+
+      try {
+        await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+        for (const asset of assets) {
+          const destination = path.join(projectRoot, ...asset.relativePath.split('/'));
+          await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+          await rename(asset.temporaryPath, destination);
+        }
+        await this.atomicWrite(target, source);
+        return this.readPostFile(target);
+      } catch (error) {
+        if (isNew) await rm(projectRoot, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
     });
-    const source = matter.stringify(input.markdown.trimEnd() + '\n', meta);
-    await this.atomicWrite(target, source);
-    return this.readPostFile(target);
+  }
+
+  async addPostImage(id: string, temporaryPath: string, originalFilename: string) {
+    return this.mutatePosts(async () => {
+      const located = await this.locatePostById(id);
+      if (!located) throw Object.assign(new Error('文章不存在'), { status: 404 });
+      validatePostRelativePath(`assets/${originalFilename}`);
+      const directory = path.join(located.projectRoot, 'assets');
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const existingNames = new Set((await readdir(directory)).map((name) => name.toLocaleLowerCase('en-US')));
+      const extension = path.extname(originalFilename);
+      const stem = path.basename(originalFilename, extension);
+      let filename = originalFilename;
+      let suffix = 2;
+      while (existingNames.has(filename.toLocaleLowerCase('en-US'))) filename = `${stem}-${suffix++}${extension}`;
+      await rename(temporaryPath, path.join(directory, filename));
+      const relativePath = `assets/${filename}`;
+      return { url: this.postMediaUrl(located.projectName, relativePath), relativePath };
+    });
+  }
+
+  async postProjectListing(id: string, directory = '') {
+    const located = await this.locatePostById(id);
+    if (!located) return null;
+    const safeDirectory = directory ? validatePostRelativePath(directory) : '';
+    const target = safeDirectory ? path.join(located.projectRoot, ...safeDirectory.split('/')) : located.projectRoot;
+    try {
+      if (!(await lstat(target)).isDirectory()) return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    const entries = [];
+    for (const entry of await readdir(target, { withFileTypes: true })) {
+      if (!entry.isDirectory() && !entry.isFile()) continue;
+      const relativePath = [safeDirectory, entry.name].filter(Boolean).join('/');
+      const details = await stat(path.join(target, entry.name));
+      entries.push({
+        name: entry.name,
+        relativePath,
+        kind: entry.isDirectory() ? 'directory' as const : 'file' as const,
+        size: entry.isFile() ? details.size : undefined,
+        updatedAt: details.mtime.toISOString(),
+        article: relativePath === located.markdownRelativePath,
+      });
+    }
+    return { ...located, directory: safeDirectory, entries };
   }
 
   async deletePost(id: string) {
-    const target = path.join(this.paths.posts, `${id}.md`);
-    if (!(await this.exists(target))) return false;
-    await unlink(target);
-    return true;
+    return this.mutatePosts(async () => {
+      const located = await this.locatePostById(id);
+      if (!located) return false;
+      await rm(located.projectRoot, { recursive: true, force: true });
+      return true;
+    });
   }
 
   async atomicWrite(filePath: string, data: string | Buffer) {

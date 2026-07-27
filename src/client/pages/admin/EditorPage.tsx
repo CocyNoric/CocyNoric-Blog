@@ -82,11 +82,12 @@ export function EditorPage() {
 
   const uploadImage = async (file?: File) => {
     if (!file) return;
+    if (!id) { setError('请先保存文章，再插入图片'); return; }
     setError('');
     setUploadingImage(true);
     try {
       validateImageFile(file);
-      const { url } = await api.uploadPostImage(file, csrfToken);
+      const { url } = await api.uploadPostImage(id, file, csrfToken);
       setPost((current) => ({ ...current, markdown: `${current.markdown}${current.markdown.endsWith('\n') || !current.markdown ? '' : '\n'}![图片说明](${url})\n` }));
       setDirty(true);
     } catch (cause) {
@@ -151,7 +152,7 @@ export function EditorPage() {
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setImageDragActive(false); }}
           onDrop={dropImage}
-        ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
+        ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
         <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: preview }} /></section>
       </div>
       </>}

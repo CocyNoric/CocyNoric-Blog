@@ -1,7 +1,8 @@
 import { mkdir, lstat, readFile, readdir, rmdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
-import { codeToolsIndexSchema, galleryIndexSchema, legacyCodeToolsIndexSchema, legacyGalleryItemSchema, type GalleryIndex, type GalleryItem } from '../shared/schemas.js';
+import { codeToolsIndexSchema, galleryIndexSchema, legacyCodeToolsIndexSchema, legacyGalleryItemSchema, postMetaSchema, type GalleryIndex, type GalleryItem } from '../shared/schemas.js';
 
 export type StoragePaths = {
   root: string;
@@ -23,7 +24,7 @@ export type StoragePaths = {
   storageLayout: string;
 };
 
-const layoutVersion = 2;
+const layoutVersion = 3;
 const mediaReferencePattern = /\/media\/([a-f0-9-]+\.(?:png|jpe?g|webp))/gi;
 
 async function exists(filePath: string) {
@@ -126,6 +127,98 @@ async function copyMarkdownMedia(paths: StoragePaths) {
   }
 }
 
+function markdownProjectUrl(slug: string, filename: string) {
+  return `/media/markdown/${encodeURIComponent(slug)}/assets/${encodeURIComponent(filename)}`;
+}
+
+async function migrateFlatMarkdownProjects(paths: StoragePaths) {
+  if (!(await exists(paths.posts))) return;
+  const entries = await readdir(paths.posts, { withFileTypes: true });
+  const plans: Array<{
+    source: string;
+    target: string;
+    content: Buffer;
+    media: Array<{ source: string; target: string }>;
+  }> = [];
+  const migratedMedia = new Set<string>();
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !/\.(?:md|markdown)$/i.test(entry.name)) continue;
+    const source = path.join(paths.posts, entry.name);
+    const original = await readFile(source, 'utf8');
+    const parsed = matter(original);
+    const slug = postMetaSchema.shape.slug.parse(parsed.data.slug);
+    const media: Array<{ source: string; target: string }> = [];
+    const rewritten = original.replace(mediaReferencePattern, (_match, filename: string) => {
+      const sourceMedia = path.join(paths.markdownMedia, filename);
+      const targetMedia = path.join(paths.markdown, slug, 'assets', filename);
+      media.push({ source: sourceMedia, target: targetMedia });
+      migratedMedia.add(filename);
+      return markdownProjectUrl(slug, filename);
+    });
+    plans.push({
+      source,
+      target: path.join(paths.markdown, slug, `${slug}.md`),
+      content: Buffer.from(rewritten, 'utf8'),
+      media,
+    });
+  }
+
+  for (const plan of plans) {
+    if (await exists(plan.target)) {
+      const current = await readFile(plan.target);
+      if (!current.equals(plan.content)) throw new Error(`存储迁移目标冲突：${plan.target}`);
+    }
+    for (const file of plan.media) {
+      if (await exists(file.source)) await preflightExactCopy(file.source, file.target);
+    }
+  }
+
+  for (const plan of plans) {
+    for (const file of plan.media) {
+      if (await exists(file.source)) await copyExact(file.source, file.target);
+    }
+    if (!(await exists(plan.target))) {
+      await mkdir(path.dirname(plan.target), { recursive: true, mode: 0o700 });
+      await writeFileAtomic(plan.target, plan.content, { mode: 0o600 });
+    }
+    await unlink(plan.source);
+  }
+  await rmdir(paths.posts).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error;
+  });
+  for (const filename of migratedMedia) await unlink(path.join(paths.markdownMedia, filename)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  await rmdir(paths.markdownMedia).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error;
+  });
+}
+
+async function archiveUnassignedMarkdownMedia(paths: StoragePaths) {
+  if (!(await exists(paths.markdownMedia))) return;
+  const mediaEntries = await readdir(paths.markdownMedia, { withFileTypes: true });
+  if (!mediaEntries.length) {
+    await rmdir(paths.markdownMedia);
+    return;
+  }
+  if (mediaEntries.some((entry) => !entry.isFile())) {
+    throw new Error(`存储迁移目标冲突：${paths.markdownMedia}`);
+  }
+  const projects = (await readdir(paths.markdown, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'posts' && entry.name !== 'media');
+  const archiveRoot = projects.length === 1
+    ? path.join(paths.markdown, projects[0].name, 'assets', 'legacy')
+    : path.join(paths.markdown, '.legacy-media');
+  for (const entry of mediaEntries) {
+    await preflightExactCopy(path.join(paths.markdownMedia, entry.name), path.join(archiveRoot, entry.name));
+  }
+  for (const entry of mediaEntries) {
+    await moveExact(path.join(paths.markdownMedia, entry.name), path.join(archiveRoot, entry.name));
+  }
+  await rmdir(paths.markdownMedia);
+}
+
 type MigratedGallery = {
   index: GalleryIndex;
   files: Array<{ source: string; target: string }>;
@@ -223,8 +316,7 @@ export async function migrateStorageLayout(paths: StoragePaths) {
     mkdir(paths.media, { recursive: true, mode: 0o700 }),
     mkdir(paths.sessions, { recursive: true, mode: 0o700 }),
     mkdir(paths.tmp, { recursive: true, mode: 0o700 }),
-    mkdir(paths.posts, { recursive: true, mode: 0o700 }),
-    mkdir(paths.markdownMedia, { recursive: true, mode: 0o700 }),
+    mkdir(paths.markdown, { recursive: true, mode: 0o700 }),
     mkdir(paths.galleryRoot, { recursive: true, mode: 0o700 }),
     mkdir(paths.codeTools, { recursive: true, mode: 0o700 }),
   ]);
@@ -232,16 +324,31 @@ export async function migrateStorageLayout(paths: StoragePaths) {
   if (await exists(paths.storageLayout)) {
     const marker = JSON.parse(await readFile(paths.storageLayout, 'utf8')) as { version?: unknown };
     if (marker.version === layoutVersion) {
+      await archiveUnassignedMarkdownMedia(paths);
       await validateCurrentLayout(paths);
+      return;
+    }
+    if (marker.version === 2) {
+      await validateCurrentLayout(paths);
+      await migrateFlatMarkdownProjects(paths);
+      await archiveUnassignedMarkdownMedia(paths);
+      await writeFileAtomic(paths.storageLayout, `${JSON.stringify({ version: layoutVersion }, null, 2)}\n`, { mode: 0o600 });
       return;
     }
     if (marker.version !== 1) throw new Error('存储布局版本无效');
     galleryIndexSchema.parse(JSON.parse(await readFile(paths.gallery, 'utf8')) as unknown);
     await preflightCodeToolsUpgrade(paths);
     await initializeCodeTools(paths);
+    await migrateFlatMarkdownProjects(paths);
+    await archiveUnassignedMarkdownMedia(paths);
     await writeFileAtomic(paths.storageLayout, `${JSON.stringify({ version: layoutVersion }, null, 2)}\n`, { mode: 0o600 });
     return;
   }
+
+  await Promise.all([
+    mkdir(paths.posts, { recursive: true, mode: 0o700 }),
+    mkdir(paths.markdownMedia, { recursive: true, mode: 0o700 }),
+  ]);
 
   const legacyGallery = path.join(paths.root, 'gallery.json');
   const migratedGallery = await exists(legacyGallery)
@@ -275,6 +382,8 @@ export async function migrateStorageLayout(paths: StoragePaths) {
   }
 
   await copyMarkdownMedia(paths);
+  await migrateFlatMarkdownProjects(paths);
+  await archiveUnassignedMarkdownMedia(paths);
   await initializeCodeTools(paths);
   await writeFileAtomic(paths.storageLayout, `${JSON.stringify({ version: layoutVersion }, null, 2)}\n`, { mode: 0o600 });
 }

@@ -468,6 +468,7 @@ const galleryItemBaseSchema = z.object({
   legacyId: z.string().uuid().optional(),
   url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
   originalFilename: galleryFilenameSchema,
+  displayFilename: galleryFilenameSchema.optional(),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
   createdAt: z.string().datetime(),
