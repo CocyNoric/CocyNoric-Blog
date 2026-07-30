@@ -14,7 +14,7 @@
     "admin:create": "tsx scripts/admin.ts create",
     "admin:change-password": "tsx scripts/admin.ts change-password"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",

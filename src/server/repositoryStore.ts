@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { RepositoryArea, RepositoryAreaKey, RepositoryEntry, RepositoryListing, RepositoryOverview } from '../shared/types.js';
 import { dataStore } from './dataStore.js';
 
@@ -56,16 +57,36 @@ async function markdownEntries(pathname: string) {
       updatedAt: post.updatedAt ?? `${post.date}T00:00:00.000Z`,
     }));
   }
-  const post = posts.find((candidate) => candidate.slug === pathname);
+  const [slug, ...directoryParts] = pathname.split('/');
+  const post = posts.find((candidate) => candidate.slug === slug);
   if (!post) return null;
-  return [fileEntry({
-    name: '正文.md',
-    path: `${post.slug}/正文.md`,
-    icon: 'markdown',
-    description: post.title,
-    updatedAt: post.updatedAt ?? `${post.date}T00:00:00.000Z`,
-    href: `/posts/${encodeURIComponent(post.slug)}`,
-  })];
+  const listing = await dataStore.postProjectListing(post.id, directoryParts.join('/'));
+  if (!listing) return null;
+  return listing.entries.map((entry) => {
+    const entryPath = `${post.slug}/${entry.relativePath}`;
+    if (entry.kind === 'directory') return directoryEntry({
+      name: entry.name,
+      path: entryPath,
+      description: '',
+      updatedAt: entry.updatedAt,
+    });
+    const extension = path.extname(entry.name).toLowerCase();
+    const image = ['.png', '.jpg', '.jpeg', '.webp'].includes(extension);
+    return fileEntry({
+      name: entry.name,
+      path: entryPath,
+      icon: entry.article ? 'markdown' : image ? 'image' : 'file',
+      description: entry.article ? post.title : '',
+      updatedAt: entry.updatedAt,
+      size: entry.size,
+      mimeType: image ? (extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg') : entry.article ? 'text/markdown' : null,
+      href: entry.article
+        ? `/posts/${encodeURIComponent(post.slug)}`
+        : image
+          ? dataStore.postMediaUrl(listing.projectName, entry.relativePath)
+          : undefined,
+    });
+  });
 }
 
 async function galleryEntries(pathname: string) {
@@ -81,14 +102,15 @@ async function galleryEntries(pathname: string) {
   }
   const item = items.find((candidate) => candidate.id === pathname || candidate.legacyId === pathname);
   if (!item) return null;
-  return [fileEntry({
-    name: item.originalFilename,
-    path: `${item.id}/${item.originalFilename}`,
+  const filenames = [item.originalFilename, ...(item.displayFilename ? [item.displayFilename] : [])];
+  return filenames.map((filename) => fileEntry({
+    name: filename,
+    path: `${item.id}/${filename}`,
     icon: 'image',
-    description: item.title,
+    description: filename === item.originalFilename ? `${item.title}（原图）` : `${item.title}（WebP 展示图）`,
     updatedAt: item.createdAt,
-    href: `/gallery/${encodeURIComponent(item.id)}`,
-  })];
+    href: filename === item.displayFilename ? item.url : `/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`,
+  }));
 }
 
 const codeToolProjectArchiveUrl = (slug: string) => `/api/repository/code-tools/projects/${encodeURIComponent(slug)}/archive`;

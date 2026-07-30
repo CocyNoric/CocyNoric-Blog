@@ -192,10 +192,17 @@ adminRouter.put('/settings', requireWriteProtection, async (req, res, next) => {
 });
 
 adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
+  let temporaryPath: string | null = null;
   try {
-    const upload = await receiveImage(req, { fieldLimit: 2, domain: 'markdown' });
-    res.status(201).json({ url: upload.url });
+    const upload = await receiveImage(req, { fieldLimit: 1, preserveOriginal: true });
+    temporaryPath = upload.temporaryPath;
+    const postId = upload.fields.postId;
+    if (!postId) throw Object.assign(new Error('请先保存文章，再插入图片'), { status: 400 });
+    const saved = await dataStore.addPostImage(postId, upload.temporaryPath, upload.originalFilename);
+    temporaryPath = null;
+    res.status(201).json({ url: saved.url });
   } catch (error) {
+    if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
     next(error);
   }
 });

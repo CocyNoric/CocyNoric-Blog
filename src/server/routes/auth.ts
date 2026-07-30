@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { loginSchema } from '../../shared/schemas.js';
-import { clearSessionCookie, createSession, destroySession, readSession, requireAuth, requireWriteProtection, setSessionCookie, verifyPassword } from '../auth.js';
+import { authenticatePassword, clearSessionCookie, createSession, destroySession, readSession, requireAuth, requireWriteProtection, setSessionCookie } from '../auth.js';
 
 export const authRouter = Router();
 
@@ -16,11 +16,12 @@ const loginLimiter = rateLimit({
 authRouter.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const input = loginSchema.parse(req.body);
-    if (!(await verifyPassword(input.password))) {
+    const credentialVersion = await authenticatePassword(input.password);
+    if (!credentialVersion) {
       res.status(401).json({ error: '密码错误' });
       return;
     }
-    const { token, session } = await createSession();
+    const { token, session } = await createSession(credentialVersion);
     setSessionCookie(res, token);
     res.json({ authenticated: true, csrfToken: session.csrfToken });
   } catch (error) {
