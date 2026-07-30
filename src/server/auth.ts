@@ -11,7 +11,30 @@ const scrypt = promisify(scryptCallback);
 const cookieName = 'blog_session';
 
 type AdminRecord = { salt: string; hash: string };
-type SessionRecord = { csrfToken: string; createdAt: string; expiresAt: string };
+type SessionRecord = { csrfToken: string; credentialVersion: string; createdAt: string; expiresAt: string };
+
+async function readAdminRecord() {
+  const value = JSON.parse(await readFile(dataStore.paths.admin, 'utf8')) as Partial<AdminRecord>;
+  if (
+    typeof value.salt !== 'string'
+    || !/^[a-f0-9]{32}$/.test(value.salt)
+    || typeof value.hash !== 'string'
+    || !/^[a-f0-9]{128}$/.test(value.hash)
+  ) throw new Error('管理员凭据格式无效');
+  return value as AdminRecord;
+}
+
+function credentialVersion(record: AdminRecord) {
+  return createHash('sha256').update(record.salt).update(':').update(record.hash).digest('hex');
+}
+
+async function currentCredentialVersion() {
+  try {
+    return credentialVersion(await readAdminRecord());
+  } catch {
+    return null;
+  }
+}
 
 export async function hashPassword(password: string): Promise<AdminRecord> {
   const salt = randomBytes(16);
@@ -22,28 +45,39 @@ export async function hashPassword(password: string): Promise<AdminRecord> {
 export async function saveAdminPassword(password: string) {
   if (password.length < 12) throw new Error('密码至少需要 12 个字符');
   await dataStore.atomicWrite(dataStore.paths.admin, `${JSON.stringify(await hashPassword(password), null, 2)}\n`);
+  await cleanExpiredSessions();
+}
+
+export async function authenticatePassword(password: string) {
+  try {
+    const record = await readAdminRecord();
+    const expected = Buffer.from(record.hash, 'hex');
+    const actual = (await scrypt(password, Buffer.from(record.salt, 'hex'), expected.length)) as Buffer;
+    return actual.length === expected.length && timingSafeEqual(actual, expected)
+      ? credentialVersion(record)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function verifyPassword(password: string) {
-  try {
-    const record = JSON.parse(await readFile(dataStore.paths.admin, 'utf8')) as AdminRecord;
-    const expected = Buffer.from(record.hash, 'hex');
-    const actual = (await scrypt(password, Buffer.from(record.salt, 'hex'), expected.length)) as Buffer;
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
-  } catch {
-    return false;
-  }
+  return (await authenticatePassword(password)) !== null;
 }
 
 function sessionPath(token: string) {
   return path.join(dataStore.paths.sessions, `${createHash('sha256').update(token).digest('hex')}.json`);
 }
 
-export async function createSession() {
+export async function createSession(expectedCredentialVersion: string) {
+  if (expectedCredentialVersion !== await currentCredentialVersion()) {
+    throw Object.assign(new Error('管理员凭据已更新，请重新登录'), { status: 409 });
+  }
   const token = randomBytes(32).toString('base64url');
   const now = Date.now();
   const session: SessionRecord = {
     csrfToken: randomBytes(24).toString('base64url'),
+    credentialVersion: expectedCredentialVersion,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + config.sessionHours * 60 * 60 * 1000).toISOString(),
   };
@@ -56,7 +90,12 @@ export async function readSession(req: Request) {
   if (!token) return null;
   try {
     const session = JSON.parse(await readFile(sessionPath(token), 'utf8')) as SessionRecord;
-    if (Date.parse(session.expiresAt) <= Date.now()) {
+    const validCredential = await currentCredentialVersion();
+    if (
+      !validCredential
+      || session.credentialVersion !== validCredential
+      || Date.parse(session.expiresAt) <= Date.now()
+    ) {
       await unlink(sessionPath(token)).catch(() => undefined);
       return null;
     }
@@ -123,11 +162,16 @@ export function requireWriteProtection(req: Request, res: Response, next: NextFu
 
 export async function cleanExpiredSessions() {
   const names = await readdir(dataStore.paths.sessions);
+  const validCredential = await currentCredentialVersion();
   await Promise.all(names.filter((name) => name.endsWith('.json')).map(async (name) => {
     const file = path.join(dataStore.paths.sessions, name);
     try {
       const session = JSON.parse(await readFile(file, 'utf8')) as SessionRecord;
-      if (Date.parse(session.expiresAt) <= Date.now()) await unlink(file);
+      if (
+        !validCredential
+        || session.credentialVersion !== validCredential
+        || Date.parse(session.expiresAt) <= Date.now()
+      ) await unlink(file);
     } catch {
       await unlink(file).catch(() => undefined);
     }

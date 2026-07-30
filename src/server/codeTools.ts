@@ -562,12 +562,12 @@ export async function serveCodeToolProjectArchiveDownload(req: Request, res: Res
   for (const file of files) {
     const archivePath = `${project.slug}/${file.relativePath}`;
     if (file.size === 0) {
-      archive.addBuffer(Buffer.alloc(0), archivePath, { mode: 0o100644, compress: true });
+      archive.addBuffer(Buffer.alloc(0), archivePath, { mode: 0o100644, compress: false });
       continue;
     }
     const source = createReadStream(file.path, { start: 0, end: file.size - 1 });
     source.once('error', () => res.destroy());
-    archive.addReadStream(source, archivePath, { size: file.size, mode: 0o100644, compress: true });
+    archive.addReadStream(source, archivePath, { size: file.size, mode: 0o100644, compress: false });
   }
   archive.end();
 }
