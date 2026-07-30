@@ -10,7 +10,7 @@ import test, { after } from 'node:test';
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -463,6 +463,18 @@ test('stores only a password digest and verifies credentials', async () => {
   assert.doesNotMatch(stored, /correct-horse-battery-staple/);
   assert.equal(await verifyPassword('correct-horse-battery-staple'), true);
   assert.equal(await verifyPassword('wrong-password'), false);
+
+  const version = await authenticatePassword('correct-horse-battery-staple');
+  assert.ok(version);
+  const { token } = await createSession(version);
+  const request = { headers: { cookie: `blog_session=${token}` } } as Parameters<typeof readSession>[0];
+  assert.ok(await readSession(request));
+
+  await saveAdminPassword('new-correct-horse-battery-staple');
+  assert.equal(await readSession(request), null);
+  assert.equal((await readdir(dataStore.paths.sessions)).filter((name) => name.endsWith('.json')).length, 0);
+  assert.equal(await verifyPassword('correct-horse-battery-staple'), false);
+  assert.equal(await verifyPassword('new-correct-horse-battery-staple'), true);
 });
 
 test('stores gallery files under sequential identifiers without reusing deleted IDs', async () => {

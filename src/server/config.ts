@@ -11,6 +11,14 @@ if (!production) publicOrigins.push('http://localhost:5173');
 
 const host = process.env.BLOG_HOST ?? (production ? '0.0.0.0' : '127.0.0.1');
 
+export function parseTrustProxyHops(value: string | undefined) {
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) throw new Error('BLOG_TRUST_PROXY_HOPS 必须是 0 到 10 之间的整数');
+  const hops = Number.parseInt(value, 10);
+  if (hops < 0 || hops > 10) throw new Error('BLOG_TRUST_PROXY_HOPS 必须是 0 到 10 之间的整数');
+  return hops;
+}
+
 if (host !== '127.0.0.1' && host !== '0.0.0.0') {
   throw new Error('BLOG_HOST 只能是 127.0.0.1 或 0.0.0.0');
 }
@@ -18,6 +26,7 @@ if (host !== '127.0.0.1' && host !== '0.0.0.0') {
 export const config = {
   port: Number.parseInt(process.env.BLOG_PORT ?? '3000', 10),
   host,
+  trustProxyHops: parseTrustProxyHops(process.env.BLOG_TRUST_PROXY_HOPS),
   dataDir: path.resolve(process.env.BLOG_DATA_DIR ?? path.join(projectRoot, 'data')),
   publicOrigins: new Set(publicOrigins),
   secureCookie: process.env.BLOG_COOKIE_SECURE === undefined
