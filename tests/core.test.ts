@@ -491,12 +491,16 @@ test('stores gallery files under sequential identifiers without reusing deleted 
 
   assert.equal(first.id, '00000001');
   assert.equal(first.originalFilename, '第一张.png');
-  assert.equal(first.url, '/media/gallery/00000001/%E7%AC%AC%E4%B8%80%E5%BC%A0.png');
+  assert.equal(first.displayFilename, 'display.webp');
+  assert.equal(first.url, '/media/gallery/00000001/display.webp');
   assert.deepEqual((await dataStore.listGallery())[0]?.cardFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.cardAspectRatio, '4:3');
   assert.deepEqual((await dataStore.listGallery())[0]?.thumbnailFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.thumbnailAspectRatio, '1:1');
   assert.deepEqual(await readFile(dataStore.galleryFilePath(first)), png);
+  const firstDisplay = await readFile(dataStore.galleryDisplayFilePath(first));
+  assert.equal(firstDisplay.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(firstDisplay.subarray(8, 12).toString('ascii'), 'WEBP');
   assert.equal((await dataStore.deleteGalleryItem(first.id))?.id, first.id);
 
   const secondTemporary = path.join(dataStore.paths.tmp, '第二张.png');
@@ -506,7 +510,7 @@ test('stores gallery files under sequential identifiers without reusing deleted 
   await dataStore.deleteGalleryItem(second.id);
 });
 
-test('keeps gallery originals and creates WebP display copies above 5 MB', async () => {
+test('keeps large gallery originals and creates smaller WebP display copies', async () => {
   const temporaryPath = path.join(dataStore.paths.tmp, 'large-original.png');
   const original = Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]);
   await writeFile(temporaryPath, original);
@@ -526,6 +530,34 @@ test('keeps gallery originals and creates WebP display copies above 5 MB', async
   assert.ok(display.length > 0);
   assert.ok(display.length < original.length);
   await dataStore.deleteGalleryItem(item.id);
+});
+
+test('backfills WebP display copies for existing original-only gallery items', async () => {
+  const temporaryPath = path.join(dataStore.paths.tmp, 'legacy-small.png');
+  await writeFile(temporaryPath, png);
+  const item = await dataStore.addGalleryItem({
+    temporaryPath,
+    originalFilename: 'legacy-small.png',
+    title: '旧画廊图片',
+    description: '',
+    width: 1,
+    height: 1,
+  });
+
+  await unlink(dataStore.galleryDisplayFilePath(item));
+  const index = JSON.parse(await readFile(dataStore.paths.gallery, 'utf8')) as { items: Array<Record<string, unknown> & { id: string; url: string }> };
+  const stored = index.items.find((candidate) => candidate.id === item.id)!;
+  delete stored.displayFilename;
+  stored.url = `/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`;
+  await writeFile(dataStore.paths.gallery, `${JSON.stringify(index, null, 2)}\n`);
+
+  const restarted = new DataStore(dataStore.paths.root);
+  await restarted.initialize();
+  const migrated = await restarted.getGalleryItem(item.id);
+  assert.equal(migrated?.displayFilename, 'display.webp');
+  assert.equal(migrated?.url, `/media/gallery/${item.id}/display.webp`);
+  assert.ok((await readFile(restarted.galleryDisplayFilePath(migrated!))).length > 0);
+  await restarted.deleteGalleryItem(item.id);
 });
 
 test('allocates unique gallery IDs for concurrent uploads', async () => {

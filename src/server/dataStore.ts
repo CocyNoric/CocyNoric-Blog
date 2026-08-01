@@ -607,7 +607,6 @@ export class DataStore {
       let changed = false;
       for (const item of index.items) {
         const original = this.galleryFilePath(item);
-        if ((await stat(original)).size <= config.compressionThreshold) continue;
         const displayFilename = item.displayFilename ?? this.galleryDisplayFilename(item.originalFilename);
         const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
         if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
@@ -639,15 +638,14 @@ export class DataStore {
       await rename(input.temporaryPath, destination);
 
       try {
-        const compress = (await stat(destination)).size > config.compressionThreshold;
-        const displayFilename = compress ? this.galleryDisplayFilename(input.originalFilename) : undefined;
-        if (displayFilename) await this.writeGalleryDisplayFile(destination, path.join(directory, displayFilename));
+        const displayFilename = this.galleryDisplayFilename(input.originalFilename);
+        await this.writeGalleryDisplayFile(destination, path.join(directory, displayFilename));
         const item = galleryItemSchema.parse({
           ...input,
           temporaryPath: undefined,
           id,
-          ...(displayFilename ? { displayFilename } : {}),
-          url: `/media/gallery/${id}/${encodeURIComponent(displayFilename ?? input.originalFilename)}`,
+          displayFilename,
+          url: `/media/gallery/${id}/${encodeURIComponent(displayFilename)}`,
           createdAt: new Date().toISOString(),
         });
         await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });

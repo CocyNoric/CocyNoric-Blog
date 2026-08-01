@@ -20,3 +20,8 @@ export const FileIcon = (props: IconProps) => <Icon {...props}><path d="M6 3h8l4
 export const UploadIcon = (props: IconProps) => <Icon {...props}><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></Icon>;
 export const DownloadIcon = (props: IconProps) => <Icon {...props}><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></Icon>;
 export const DragHandleIcon = (props: IconProps) => <Icon {...props}><circle cx="8" cy="5" r=".8" fill="currentColor"/><circle cx="16" cy="5" r=".8" fill="currentColor"/><circle cx="8" cy="12" r=".8" fill="currentColor"/><circle cx="16" cy="12" r=".8" fill="currentColor"/><circle cx="8" cy="19" r=".8" fill="currentColor"/><circle cx="16" cy="19" r=".8" fill="currentColor"/></Icon>;
+export const GridViewIcon = (props: IconProps) => <Icon {...props}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Icon>;
+export const ShowcaseViewIcon = (props: IconProps) => <Icon {...props}><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 21h10M9 17v4M15 17v4"/></Icon>;
+export const ChevronLeftIcon = (props: IconProps) => <Icon {...props}><path d="m15 18-6-6 6-6"/></Icon>;
+export const ChevronRightIcon = (props: IconProps) => <Icon {...props}><path d="m9 18 6-6-6-6"/></Icon>;
+export const SidebarIcon = (props: IconProps) => <Icon {...props}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M6 8h.01M6 12h.01"/></Icon>;
