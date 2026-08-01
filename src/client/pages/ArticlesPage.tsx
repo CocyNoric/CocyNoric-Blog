@@ -4,7 +4,7 @@ import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
 import { api } from '../api.js';
 import { ArticleSection } from '../components/ArticleSection.js';
-import { useListingRailPreference, useListingViewMode } from '../hooks/useListingViewMode.js';
+import { useListingRailPreference } from '../hooks/useListingViewMode.js';
 import { useSettings } from '../hooks/useSettings.js';
 
 export function ArticlesPage() {
@@ -17,7 +17,6 @@ export function ArticlesPage() {
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryError, setGalleryError] = useState('');
   const [error, setError] = useState('');
-  const [viewMode, setViewMode] = useListingViewMode('blog-articles-view');
   const [railOpen, setRailOpen] = useListingRailPreference('blog-articles-rail');
 
   useEffect(() => {
@@ -51,6 +50,6 @@ export function ArticlesPage() {
   }, [query]);
 
   return <main id="main" className="page-shell listing-shell">
-    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" viewMode={viewMode} onViewModeChange={setViewMode} railOpen={railOpen} onRailOpenChange={setRailOpen} plain />
+    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" railOpen={railOpen} onRailOpenChange={setRailOpen} showResultStatus={false} plain />
   </main>;
 }

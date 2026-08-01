@@ -159,6 +159,7 @@
 .showcase-meta-column { display: grid; align-content: start; justify-items: end; gap: 18px; text-align: right; }
 .showcase-meta-column .tag-list { justify-content: flex-end; }
 .post-grid, .gallery-grid { animation: listing-view-reveal .3s var(--motion-standard) both; }
+.article-showcase-feed { min-width: 0; display: grid; gap: clamp(20px, 3vw, 30px); animation: listing-view-reveal .34s var(--motion-standard) both; }
 .gallery-showcase-feed { min-width: 0; display: grid; gap: clamp(28px, 4vw, 48px); animation: listing-view-reveal .34s var(--motion-standard) both; }
 .gallery-feed-post { min-width: 0; overflow: hidden; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--radius-extra); color: var(--md-sys-color-on-surface); background: color-mix(in srgb, var(--md-sys-color-surface) 96%, transparent); box-shadow: 0 12px 32px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent); }
 .gallery-feed-media { min-height: 360px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--surface-container-highest); text-decoration: none; }
