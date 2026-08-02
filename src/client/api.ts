@@ -120,6 +120,7 @@ export const api = {
     body.append('image', file);
     body.append('title', input.title);
     body.append('description', input.description);
+    body.append('category', input.category);
     body.append('cardFocusX', String(input.cardFocus?.x ?? 0.5));
     body.append('cardFocusY', String(input.cardFocus?.y ?? 0.5));
     body.append('cardFocusSize', String(input.cardFocus?.size ?? 1));

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
+import { categoryDisplayName } from '../../shared/categories.js';
 import type { PostSummary } from '../../shared/types.js';
 import { ArrowIcon, CalendarIcon, DownloadIcon } from './Icons.js';
 import { ListingRailStage } from './ListingRailStage.js';
@@ -9,20 +10,12 @@ type ShowcaseRailProps = {
   railOpen: boolean;
 };
 
-type ArticleShowcasePost = PostSummary & {
-  category?: string | null;
-};
-
-function articleCategoryLabel(post: ArticleShowcasePost) {
-  return post.category?.trim() || 'Category';
-}
-
-export function ArticleShowcase({ posts, rail, railOpen }: { posts: ArticleShowcasePost[] } & ShowcaseRailProps) {
+export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[] } & ShowcaseRailProps) {
   return <ListingRailStage rail={rail} railOpen={railOpen} railLabel="文章浏览信息" variant="feed">
     <section className="article-showcase-feed" aria-label="文章帖子">
       {posts.map((post) => <article className="showcase-card article-showcase-card" key={post.id}>
         <Link className="article-showcase-visual" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
-          <span className="showcase-kicker">{articleCategoryLabel(post)}</span>
+          <span className="showcase-kicker">{categoryDisplayName(post.category)}</span>
           <h3>{post.title}</h3>
           <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
         </Link>
@@ -33,7 +26,6 @@ export function ArticleShowcase({ posts, rail, railOpen }: { posts: ArticleShowc
           </div>
           <div className="showcase-meta-column">
             <span className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></span>
-            {post.tags.length > 0 && <div className="tag-list" aria-label="标签">{post.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>}
           </div>
         </div>
       </article>)}
@@ -55,7 +47,7 @@ export function GalleryShowcase({ items, cardImageLimit, rail, railOpen }: { ite
             <img src={item.url} alt={item.title} loading={groupIndex === 0 && itemIndex === 0 ? 'eager' : 'lazy'} />
           </Link>
           <div className="gallery-feed-footer">
-            <h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3>
+            <div><h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3><Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link></div>
             <a className="icon-button gallery-feed-download" href={`/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`} download={item.originalFilename} title={`下载 ${item.title}`} aria-label={`下载图片：${item.title}`}><DownloadIcon /></a>
           </div>
         </article>)}

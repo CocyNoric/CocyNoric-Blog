@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react';
+import { useEffect, useState, type DragEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PostInput } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
@@ -10,7 +10,7 @@ import { validateImageFile } from '../../components/ImageDropField.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
 const emptyPost: PostInput = {
-  slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), status: 'draft', tags: [], markdown: '',
+  slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), status: 'draft', category: '未分类', tags: [], markdown: '',
 };
 
 export function EditorPage() {
@@ -18,7 +18,6 @@ export function EditorPage() {
   const navigate = useNavigate();
   const { csrfToken } = useAuth();
   const [post, setPost] = useState<PostInput>(emptyPost);
-  const [tags, setTags] = useState('');
   const [preview, setPreview] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -34,14 +33,12 @@ export function EditorPage() {
     let active = true;
     if (!id) {
       setPost(emptyPost);
-      setTags('');
       setDirty(false);
       setLoadError('');
       setLoadState('new');
       return () => { active = false; };
     }
     setPost(emptyPost);
-    setTags('');
     setPreview('');
     setDirty(false);
     setLoadError('');
@@ -49,7 +46,6 @@ export function EditorPage() {
     void api.adminPost(id).then((value) => {
       if (!active) return;
       setPost(value);
-      setTags(value.tags.join(', '));
       setLoadState('loaded');
     }).catch((cause: Error) => {
       if (!active) return;
@@ -78,7 +74,6 @@ export function EditorPage() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  const parsedTags = useMemo(() => [...new Set(tags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))], [tags]);
   const update = <K extends keyof PostInput>(key: K, value: PostInput[K]) => { setPost((current) => ({ ...current, [key]: value })); setDirty(true); setMessage(''); };
 
   const uploadImage = async (file?: File) => {
@@ -117,8 +112,7 @@ export function EditorPage() {
     setError('');
     setMessage('');
     try {
-      const payload = { ...post, tags: parsedTags };
-      const saved = id ? await api.updatePost(id, payload, csrfToken) : await api.createPost(payload, csrfToken);
+      const saved = id ? await api.updatePost(id, post, csrfToken) : await api.createPost(post, csrfToken);
       setDirty(false);
       setPost(saved);
       if (!id) navigate(`/admin/posts/${saved.id}`, { replace: true });
@@ -147,7 +141,7 @@ export function EditorPage() {
         <label className="form-field"><span>文章路径</span><input value={post.slug} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="my-post" onChange={(event) => update('slug', event.target.value)} required /></label>
         <DateField label="日期" value={post.date} onChange={(value) => update('date', value)} required />
         <SelectField label="状态" value={post.status} options={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '发布' }]} onChange={(value) => update('status', value)} />
-        <label className="form-field"><span>标签（逗号分隔）</span><input value={tags} onChange={(event) => { setTags(event.target.value); setDirty(true); setMessage(''); }} placeholder="技术, 项目" /></label>
+        <label className="form-field span-2"><span>多级分类</span><input value={post.category} maxLength={131} onChange={(event) => update('category', event.target.value)} placeholder="例如：技术 / 前端 / React" /><small>使用 / 分隔层级，最多 4 级</small></label>
         <label className="form-field span-2"><span>摘要</span><textarea rows={2} maxLength={320} value={post.excerpt} onChange={(event) => update('excerpt', event.target.value)} /></label>
       </div>
       <div className="editor-grid">

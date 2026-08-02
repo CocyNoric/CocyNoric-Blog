@@ -3,6 +3,7 @@ import { dataStore } from '../dataStore.js';
 import { renderMarkdown } from '../markdown.js';
 import { createThemeTokens } from '../theme.js';
 import { matchesGalleryTitle } from '../../shared/search.js';
+import { categoryIncludes } from '../../shared/categories.js';
 import { serveCodeToolDownload, serveCodeToolProjectArchiveDownload, serveCodeToolProjectDownload } from '../codeTools.js';
 import { repositoryOverview, repositoryTree } from '../repositoryStore.js';
 import { archiveCapacityGuard, archiveDownloadLimiter } from '../archiveProtection.js';
@@ -67,8 +68,9 @@ publicRouter.get('/settings', async (_req, res, next) => {
 publicRouter.get('/gallery', async (req, res, next) => {
   try {
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const category = typeof req.query.category === 'string' ? req.query.category : '';
     const items = await dataStore.listGallery();
-    res.json(query ? items.filter((item) => matchesGalleryTitle(item.title, query)) : items);
+    res.json(items.filter((item) => categoryIncludes(item.category, category) && (!query || matchesGalleryTitle(item.title, query))));
   } catch (error) {
     next(error);
   }
@@ -89,12 +91,12 @@ publicRouter.get('/gallery/:id', async (req, res, next) => {
 
 publicRouter.get('/posts', async (req, res, next) => {
   try {
-    const tag = typeof req.query.tag === 'string' ? req.query.tag : '';
+    const category = typeof req.query.category === 'string' ? req.query.category : '';
     const query = typeof req.query.q === 'string' ? req.query.q.trim().toLocaleLowerCase('zh-CN') : '';
     const posts = (await dataStore.listPosts()).filter((post) => {
-      const hasTag = !tag || post.tags.includes(tag);
-      const text = `${post.title} ${post.excerpt} ${post.tags.join(' ')}`.toLocaleLowerCase('zh-CN');
-      return hasTag && (!query || text.includes(query));
+      const hasCategory = categoryIncludes(post.category, category);
+      const text = `${post.title} ${post.excerpt} ${post.category}`.toLocaleLowerCase('zh-CN');
+      return hasCategory && (!query || text.includes(query));
     }).map(({ markdown: _markdown, version: _version, ...post }) => post);
     res.json(posts);
   } catch (error) {

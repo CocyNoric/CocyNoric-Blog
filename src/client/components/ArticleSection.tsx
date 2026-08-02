@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
+import { categoryIncludes, summarizeCategoryPaths } from '../../shared/categories.js';
 import { matchesGalleryTitle } from '../../shared/search.js';
 import type { PostSummary } from '../../shared/types.js';
 import { ArrowIcon } from './Icons.js';
@@ -31,25 +32,26 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
   const Heading = headingLevel;
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
-  const activeTag = searchParams.get('tag') ?? '';
-  const allTags = useMemo(() => showArticles ? [...new Set(posts.flatMap((post) => post.tags))].slice(0, 12) : [], [posts, showArticles]);
+  const activeCategory = searchParams.get('category') ?? '';
+  const allCategories = useMemo(() => showArticles ? summarizeCategoryPaths(posts.map((post) => post.category)) : [], [posts, showArticles]);
   const filteredPosts = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('zh-CN');
     return showArticles ? posts.filter((post) => {
-      const matchesTag = !activeTag || post.tags.includes(activeTag);
-      const text = `${post.title} ${post.excerpt} ${post.tags.join(' ')}`.toLocaleLowerCase('zh-CN');
-      return matchesTag && (!needle || text.includes(needle));
+      const matchesCategory = categoryIncludes(post.category, activeCategory);
+      const text = `${post.title} ${post.excerpt} ${post.category}`.toLocaleLowerCase('zh-CN');
+      return matchesCategory && (!needle || text.includes(needle));
     }) : [];
-  }, [posts, query, activeTag, showArticles]);
+  }, [posts, query, activeCategory, showArticles]);
 
   const filteredGallery = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('zh-CN');
     return needle ? galleryItems.filter((item) => matchesGalleryTitle(item.title, query)) : [];
   }, [galleryItems, query]);
 
-  const updateTag = (tag: string) => {
+  const updateCategory = (value: string) => {
     const next = new URLSearchParams(searchParams);
-    if (tag) next.set('tag', tag); else next.delete('tag');
+    if (value) next.set('category', value); else next.delete('category');
+    next.delete('tag');
     setSearchParams(next, { replace: true });
   };
 
@@ -59,7 +61,10 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
     kind="article"
     total={posts.length}
     visible={filteredPosts.length}
-    context={activeTag ? `标签：${activeTag}` : query ? `搜索：${query}` : '全部文章'}
+    context={[activeCategory && `分类：${activeCategory.replaceAll('/', ' / ')}`, query && `搜索：${query}`].filter(Boolean).join(' · ') || '全部文章'}
+    categories={allCategories}
+    activeCategory={activeCategory}
+    onCategoryChange={updateCategory}
   />;
   const articleGrid = <div className="post-grid">{(limit === undefined ? filteredPosts : filteredPosts.slice(0, limit)).map((post) => <PostCard post={post} key={post.id} />)}</div>;
 
@@ -67,10 +72,6 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
     <div className="section-heading"><div><p className="eyebrow">{showArticles ? 'Articles' : 'Search'}</p><Heading id="articles-heading">{showArticles ? '文章' : '搜索结果'}</Heading></div>
       {showArticles && onRailOpenChange && <div className="listing-view-controls"><ListingRailToggle open={railOpen} onChange={onRailOpenChange} /></div>}
     </div>
-    {allTags.length > 0 && <div className="chip-row" aria-label="按标签筛选">
-      <button className="chip" aria-pressed={!activeTag} onClick={() => updateTag('')}>全部</button>
-      {allTags.map((tag) => <button className="chip" aria-pressed={activeTag === tag} onClick={() => updateTag(activeTag === tag ? '' : tag)} key={tag}>{tag}</button>)}
-    </div>}
     {showResultStatus && <p className="result-status" aria-live="polite">{loading ? '正在载入文章' : query ? `共 ${filteredPosts.length} 篇文章、${galleryLoading ? '…' : filteredGallery.length} 张图片` : `共 ${filteredPosts.length} 篇文章`}</p>}
     {error && <div className="message error-message" role="alert">{error}</div>}
     {galleryError && <div className="message error-message" role="alert">画廊搜索暂时无法载入：{galleryError}</div>}

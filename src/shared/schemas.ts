@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { maximumCategoryDepth, maximumCategorySegmentLength, normalizeCategoryPath, uncategorizedCategory } from './categories.js';
 
 const localMediaPath = z.string().regex(/^\/media\/[a-f0-9-]+\.(png|jpe?g|webp)$/i);
 
@@ -415,6 +416,18 @@ export function migrateSettings(raw: unknown): SiteSettings {
 
 export const postStatusSchema = z.enum(['draft', 'published']);
 
+export const postCategorySchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.replaceAll('／', '/').split('/').map((segment) => segment.trim()).join('/');
+  return normalized || undefined;
+}, z.string().trim().min(1).max(maximumCategoryDepth * maximumCategorySegmentLength + maximumCategoryDepth - 1)
+  .refine((value) => {
+    const segments = value.split('/');
+    return segments.length <= maximumCategoryDepth && segments.every((segment) => segment.length > 0 && segment.length <= maximumCategorySegmentLength);
+  }, `分类最多 ${maximumCategoryDepth} 级，每级最多 ${maximumCategorySegmentLength} 个字符`)
+  .transform(normalizeCategoryPath)
+  .default(uncategorizedCategory));
+
 export const postMetaSchema = z.object({
   id: z.string().uuid(),
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),
@@ -423,6 +436,7 @@ export const postMetaSchema = z.object({
   date: z.string().date(),
   updatedAt: z.string().datetime(),
   status: postStatusSchema,
+  category: postCategorySchema,
   tags: z.array(z.string().trim().min(1).max(32)).max(12),
 });
 
@@ -433,6 +447,7 @@ export const postInputSchema = z.object({
   excerpt: z.string().trim().max(320),
   date: z.string().date(),
   status: postStatusSchema,
+  category: postCategorySchema,
   tags: z.array(z.string().trim().min(1).max(32)).max(12),
   markdown: z.string().max(1024 * 1024),
   version: z.string().optional(),
@@ -466,6 +481,7 @@ const legacyGalleryItemBaseSchema = z.object({
   url: localMediaPath,
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
+  category: postCategorySchema,
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -499,6 +515,7 @@ const galleryItemBaseSchema = z.object({
   displayFilename: galleryFilenameSchema.optional(),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
+  category: postCategorySchema,
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -540,6 +557,7 @@ export const galleryIndexSchema = z.object({
 export const galleryInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  category: postCategorySchema,
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
@@ -550,6 +568,7 @@ export const galleryInputSchema = z.object({
 export const galleryUploadInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  category: postCategorySchema,
   cardFocusX: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
@@ -559,9 +578,10 @@ export const galleryUploadInputSchema = z.object({
   thumbnailFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
   cropPositioning: cropPositioningSchema.default('center'),
-}).transform(({ title, description, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning }) => ({
+}).transform(({ title, description, category, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning }) => ({
   title,
   description,
+  category,
   cardAspectRatio,
   cardFocus: { x: cardFocusX, y: cardFocusY, size: cardFocusSize },
   thumbnailAspectRatio,

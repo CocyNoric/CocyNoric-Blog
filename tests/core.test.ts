@@ -10,7 +10,7 @@ import test, { after } from 'node:test';
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { postInputSchema, postMetaSchema, settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -240,6 +240,7 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.footerText, "CocyNoric's Blog");
   assert.equal(posts.length, 3);
   assert.ok(posts.every((post) => post.status === 'published'));
+  assert.deepEqual(posts.map((post) => post.category), ['随笔', '技术', '项目']);
 });
 
 test('migrates legacy settings and persists independent profile and browsing options', async () => {
@@ -464,6 +465,29 @@ test('rejects stale post saves and duplicate slugs', async () => {
   );
 });
 
+test('normalizes article categories and defaults legacy posts to uncategorized', () => {
+  const legacyMeta = postMetaSchema.parse({
+    id: '123e4567-e89b-42d3-a456-426614174099',
+    slug: 'legacy-category',
+    title: '旧文章',
+    excerpt: '',
+    date: '2026-07-01',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    status: 'published',
+    tags: [],
+  });
+  assert.equal(legacyMeta.category, '未分类');
+
+  const input = {
+    slug: 'category-test', title: '分类测试', excerpt: '', date: '2026-07-01', status: 'draft' as const,
+    category: '  技术 ／ 前端 / React  ', tags: [], markdown: '',
+  };
+  assert.equal(postInputSchema.parse(input).category, '技术/前端/React');
+  assert.equal(postInputSchema.parse({ ...input, category: '' }).category, '未分类');
+  assert.equal(postInputSchema.safeParse({ ...input, category: 'x'.repeat(33) }).success, false);
+  assert.equal(postInputSchema.safeParse({ ...input, category: '一/二/三/四/五' }).success, false);
+});
+
 test('renders GFM and LaTeX without unsafe HTML', async () => {
   const html = await renderMarkdown('~~旧内容~~ $E=mc^2$ <script>alert(1)</script> [危险](javascript:alert(1))');
 
@@ -510,6 +534,7 @@ test('stores gallery files under sequential identifiers without reusing deleted 
   assert.equal(first.originalFilename, '第一张.png');
   assert.equal(first.displayFilename, 'display.webp');
   assert.equal(first.url, '/media/gallery/00000001/display.webp');
+  assert.equal(first.category, '未分类');
   assert.deepEqual((await dataStore.listGallery())[0]?.cardFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.cardAspectRatio, '4:3');
   assert.deepEqual((await dataStore.listGallery())[0]?.thumbnailFocus, { x: 0.5, y: 0.5, size: 1 });
@@ -633,8 +658,8 @@ test('updates gallery metadata without changing media fields', async () => {
     height: 1,
   });
 
-  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
-  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', category: '作品 / 插画 / 人物', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', category: '作品/插画/人物', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
   assert.equal((await dataStore.getGalleryItem(item.id))?.url, item.url);
   assert.equal((await dataStore.getGalleryItem(item.id))?.originalFilename, '原图.png');
   await dataStore.deleteGalleryItem(item.id);
@@ -643,7 +668,7 @@ test('updates gallery metadata without changing media fields', async () => {
 test('imports standalone Markdown as a normalized draft and avoids slug conflicts', async () => {
   const firstPath = path.join(dataStore.paths.tmp, 'standalone-one.md');
   const secondPath = path.join(dataStore.paths.tmp, 'standalone-two.md');
-  const source = `---\ntitle: Imported Article\nslug: welcome\nstatus: published\ndate: invalid\ntags: [test, test]\n---\n# Ignored Heading\n\nImported body.\n`;
+  const source = `---\ntitle: Imported Article\nslug: welcome\nstatus: published\ndate: invalid\ncategory: Imported\ntags: [test, test]\n---\n# Ignored Heading\n\nImported body.\n`;
   await writeFile(firstPath, source);
   await writeFile(secondPath, source);
 
@@ -652,6 +677,7 @@ test('imports standalone Markdown as a normalized draft and avoids slug conflict
   assert.equal(first.status, 'draft');
   assert.equal(first.slug, 'welcome-2');
   assert.equal(second.slug, 'welcome-3');
+  assert.equal(first.category, 'Imported');
   assert.deepEqual(first.tags, ['test']);
   assert.match(first.markdown, /Imported body/);
   assert.equal((await dataStore.postProjectListing(first.id))?.markdownRelativePath, 'article.md');
@@ -664,6 +690,7 @@ test('imports a draft with a version that supports immediate saves', async () =>
   await writeFile(file, '---\ntitle: Immediate Save\n---\n\nInitial body.\n');
   const imported = await importPostFile(file, 'immediate-save.md');
   assert.ok(imported.version);
+  assert.equal(imported.category, '未分类');
 
   const saved = await dataStore.savePost({ ...imported, markdown: `${imported.markdown}\n\nSaved immediately.` });
   assert.notEqual(saved.version, imported.version);

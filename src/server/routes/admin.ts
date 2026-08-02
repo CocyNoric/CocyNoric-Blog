@@ -210,7 +210,7 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   let temporaryPath: string | null = null;
   try {
-    const upload = await receiveImage(req, { fieldLimit: 11, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
+    const upload = await receiveImage(req, { fieldLimit: 12, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
     temporaryPath = upload.temporaryPath;
     const input = galleryUploadInputSchema.parse(upload.fields);
     const item = await dataStore.addGalleryItem({

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary, PublicPost } from '../../shared/types.js';
+import { categoryDisplayName } from '../../shared/categories.js';
 import { api } from '../api.js';
 import { ArrowIcon, CalendarIcon } from '../components/Icons.js';
 import { DetailPageLayout } from '../components/DetailPageLayout.js';
@@ -46,10 +47,9 @@ export function PostPage() {
     >
       <article className="article-surface">
         <header className="article-header">
-          <div className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></div>
+          <div className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time><span aria-hidden="true">·</span><Link className="post-category-link" to={`/articles?category=${encodeURIComponent(post.category)}`}>{categoryDisplayName(post.category)}</Link></div>
           <h1>{post.title}</h1>
           {post.excerpt && <p>{post.excerpt}</p>}
-          <div className="tag-list">{post.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
         </header>
         <div className="markdown-body" dangerouslySetInnerHTML={{ __html: post.html }} />
       </article>

@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
+import { categoryDisplayName } from '../../shared/categories.js';
 import { api } from '../api.js';
 import { ArrowIcon } from '../components/Icons.js';
 import { DetailPageLayout } from '../components/DetailPageLayout.js';
@@ -57,6 +58,7 @@ export function GalleryDetailPage() {
         <div className="gallery-detail-media"><img src={item.url} alt={item.title} onLoad={(event) => setIsPortrait(event.currentTarget.naturalHeight > event.currentTarget.naturalWidth)} /></div>
         <div className="gallery-detail-copy">
           <p className="eyebrow">Gallery</p>
+          <Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link>
           <h1>{item.title}</h1>
           {item.description && <p>{item.description}</p>}
         </div>
