@@ -21,6 +21,7 @@ export function EditorPage() {
   const [tags, setTags] = useState('');
   const [preview, setPreview] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);
@@ -78,12 +79,13 @@ export function EditorPage() {
   }, [dirty]);
 
   const parsedTags = useMemo(() => [...new Set(tags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))], [tags]);
-  const update = <K extends keyof PostInput>(key: K, value: PostInput[K]) => { setPost((current) => ({ ...current, [key]: value })); setDirty(true); };
+  const update = <K extends keyof PostInput>(key: K, value: PostInput[K]) => { setPost((current) => ({ ...current, [key]: value })); setDirty(true); setMessage(''); };
 
   const uploadImage = async (file?: File) => {
     if (!file) return;
     if (!id) { setError('请先保存文章，再插入图片'); return; }
     setError('');
+    setMessage('');
     setUploadingImage(true);
     try {
       validateImageFile(file);
@@ -113,12 +115,14 @@ export function EditorPage() {
     }
     setSaving(true);
     setError('');
+    setMessage('');
     try {
       const payload = { ...post, tags: parsedTags };
       const saved = id ? await api.updatePost(id, payload, csrfToken) : await api.createPost(payload, csrfToken);
       setDirty(false);
       setPost(saved);
       if (!id) navigate(`/admin/posts/${saved.id}`, { replace: true });
+      setMessage(saved.status === 'published' ? '文章已保存并发布。' : '草稿已保存。');
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -134,6 +138,7 @@ export function EditorPage() {
         <div className="heading-actions"><Link className="button text-button" to="/admin/posts">返回</Link><button className="button primary-button" disabled={saving || !ready}>{saving ? '正在保存…' : loadState === 'loading' ? '正在载入…' : '保存'}</button></div>
       </div>
       {(error || loadError) && <div className="message error-message" role="alert">{error || loadError}</div>}
+      {message && <div className="message success-message" role="status" aria-live="polite">{message}</div>}
       {loadState === 'loading' && <p className="loading-state">正在载入文章…</p>}
       {loadState === 'error' && <div className="empty-state"><h2>无法载入文章</h2><p>请重新载入后再编辑或保存。</p><button className="button secondary-button" type="button" onClick={() => setLoadAttempt((current) => current + 1)}>重新载入</button></div>}
       {ready && <>
@@ -142,7 +147,7 @@ export function EditorPage() {
         <label className="form-field"><span>文章路径</span><input value={post.slug} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="my-post" onChange={(event) => update('slug', event.target.value)} required /></label>
         <DateField label="日期" value={post.date} onChange={(value) => update('date', value)} required />
         <SelectField label="状态" value={post.status} options={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '发布' }]} onChange={(value) => update('status', value)} />
-        <label className="form-field"><span>标签（逗号分隔）</span><input value={tags} onChange={(event) => { setTags(event.target.value); setDirty(true); }} placeholder="技术, 项目" /></label>
+        <label className="form-field"><span>标签（逗号分隔）</span><input value={tags} onChange={(event) => { setTags(event.target.value); setDirty(true); setMessage(''); }} placeholder="技术, 项目" /></label>
         <label className="form-field span-2"><span>摘要</span><textarea rows={2} maxLength={320} value={post.excerpt} onChange={(event) => update('excerpt', event.target.value)} /></label>
       </div>
       <div className="editor-grid">

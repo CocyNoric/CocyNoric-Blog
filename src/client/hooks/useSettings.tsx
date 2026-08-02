@@ -3,7 +3,7 @@ import type { PublicSettings } from '../../shared/types.js';
 import { api } from '../api.js';
 
 const fallbackSettings: PublicSettings = {
-  version: 10,
+  version: 11,
   siteName: "CocyNoric's Blog",
   homeTitle: "CocyNoric's Blog",
   footerText: "CocyNoric's Blog",
@@ -21,6 +21,11 @@ const fallbackSettings: PublicSettings = {
     showItemCounts: true,
     showFileMetadata: true,
     showRecentUpdates: true,
+  },
+  contentVisibility: {
+    articles: true,
+    gallery: true,
+    repository: true,
   },
   footerMode: 'transparent',
   homeContent: {

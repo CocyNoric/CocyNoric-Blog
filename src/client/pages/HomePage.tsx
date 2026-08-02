@@ -7,7 +7,7 @@ import { GallerySection } from '../components/GallerySection.js';
 import { useSettings } from '../hooks/useSettings.js';
 
 export function HomePage() {
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
   const [posts, setPosts] = useState<PostSummary[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,11 +18,18 @@ export function HomePage() {
   }, [settings.siteName]);
 
   useEffect(() => {
-    void Promise.all([api.posts(), api.gallery()])
-      .then(([nextPosts, items]) => { setPosts(nextPosts); setGallery(items); })
-      .catch((cause: Error) => setError(cause.message))
-      .finally(() => setLoading(false));
-  }, []);
+    if (settingsLoading) return;
+    let active = true;
+    setLoading(true);
+    setError('');
+    const postsRequest = settings.contentVisibility.articles ? api.posts() : Promise.resolve([]);
+    const galleryRequest = settings.contentVisibility.gallery ? api.gallery() : Promise.resolve([]);
+    void Promise.all([postsRequest, galleryRequest])
+      .then(([nextPosts, items]) => { if (active) { setPosts(nextPosts); setGallery(items); } })
+      .catch((cause: Error) => { if (active) setError(cause.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [settings.contentVisibility.articles, settings.contentVisibility.gallery, settingsLoading]);
 
   return <div className="public-page">
     <main id="main" className="page-shell home-shell">
@@ -41,8 +48,8 @@ export function HomePage() {
         </div>
       </section>
 
-      <ArticleSection posts={posts} loading={loading} error={error} limit={settings.homeContent.articleLimit} surfaceOpacity={settings.homeContent.articleSurfaceOpacity} moreLink="/articles" />
-      <GallerySection items={gallery} loading={loading} error={error} limit={settings.homeContent.galleryLimit} surfaceOpacity={settings.homeContent.gallerySurfaceOpacity} moreLink="/gallery" description={settings.galleryDescription} />
+      {!settingsLoading && settings.contentVisibility.articles && <ArticleSection posts={posts} loading={loading} error={error} limit={settings.homeContent.articleLimit} surfaceOpacity={settings.homeContent.articleSurfaceOpacity} moreLink="/articles" />}
+      {!settingsLoading && settings.contentVisibility.gallery && <GallerySection items={gallery} loading={loading} error={error} limit={settings.homeContent.galleryLimit} surfaceOpacity={settings.homeContent.gallerySurfaceOpacity} moreLink="/gallery" description={settings.galleryDescription} />}
     </main>
   </div>;
 }

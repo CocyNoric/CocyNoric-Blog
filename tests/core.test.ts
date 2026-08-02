@@ -205,7 +205,8 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.profileName, 'CocyNoric');
   assert.equal(settings.profileAvatar, null);
   assert.equal(settings.webIcon, null);
-  assert.equal(settings.version, 10);
+  assert.equal(settings.version, 11);
+  assert.deepEqual(settings.contentVisibility, { articles: true, gallery: true, repository: true });
   assert.equal(settings.repositoryAppearance.backgroundImage, null);
   assert.equal(settings.repositoryAppearance.headingMinHeight, 220);
   assert.equal(settings.repositoryAppearance.titleAlign, 'left');
@@ -261,7 +262,8 @@ test('migrates legacy settings and persists independent profile and browsing opt
 
   const migratedV1 = settingsSchema.parse(legacy);
   assert.equal(migratedV1.footerText, "CocyNoric's Blog");
-  assert.equal(migratedV1.version, 10);
+  assert.equal(migratedV1.version, 11);
+  assert.deepEqual(migratedV1.contentVisibility, { articles: true, gallery: true, repository: true });
   assert.deepEqual(migratedV1.repositoryAppearance, {
     backgroundImage: null,
     headingMinHeight: 220,
@@ -289,7 +291,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     repositoryTitle: undefined,
     repositoryDescription: undefined,
   });
-  assert.equal(migratedV7.version, 10);
+  assert.equal(migratedV7.version, 11);
   assert.equal(migratedV7.repositoryTitle, '仓库');
   assert.equal(migratedV7.repositoryDescription, '代码、工具与项目归档。');
 
@@ -315,7 +317,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
       gallery: { side: 'left' as const },
     },
   });
-  assert.equal(migratedV2.version, 10);
+  assert.equal(migratedV2.version, 11);
   assert.equal(migratedV2.profileName, '旧站点名称');
   assert.equal(migratedV2.profileAvatar, legacyAvatar);
   assert.equal(migratedV2.webIcon, legacyAvatar);
@@ -342,7 +344,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
       },
     },
   });
-  assert.equal(migratedV5.version, 10);
+  assert.equal(migratedV5.version, 11);
   assert.equal(migratedV5.footerMode, 'transparent');
   assert.equal(migratedV5.galleryDescription, '项目、作品与视觉记录。');
   assert.equal(migratedV5.repositoryTitle, '仓库');
@@ -358,6 +360,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     profileName: '个人名称',
     profileAvatar: '/media/123e4567-e89b-12d3-a456-426614174001.png',
     webIcon: null,
+    contentVisibility: { articles: false, gallery: true, repository: true },
     browsing: {
       article: {
         railSide: 'right', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
@@ -376,6 +379,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(saved.profileName, '个人名称');
   assert.equal(saved.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(saved.webIcon, null);
+  assert.equal(saved.contentVisibility.articles, false);
   assert.equal(saved.browsing.article.railWidth, 420);
   assert.equal(saved.browsing.article.railSide, 'right');
   assert.equal(saved.browsing.gallery.railSide, 'left');
@@ -390,6 +394,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(persisted.repositoryDescription, '整理代码、工具和实验项目。');
   assert.equal(persisted.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(persisted.webIcon, null);
+  assert.equal(persisted.contentVisibility.articles, false);
   assert.equal(persisted.browsing.article.railWidth, 420);
   assert.equal(persisted.browsing.gallery.recentGalleryLimit, 3);
   assert.equal(persisted.browsing.gallery.gridMaxColumns, 5);
@@ -407,22 +412,28 @@ test('preserves omitted settings during partial top-level and nested saves', asy
   assert.equal(topLevel.footerText, before.footerText);
   assert.equal(topLevel.repositoryDescription, before.repositoryDescription);
   assert.deepEqual(topLevel.homeContent, before.homeContent);
+  assert.deepEqual(topLevel.contentVisibility, before.contentVisibility);
   assert.deepEqual(topLevel.browsing, before.browsing);
 
   const nested = await dataStore.writeSettings({
     repositoryAppearance: { showRecentUpdates: false },
+    contentVisibility: { gallery: false },
   });
   assert.equal(nested.siteName, '部分更新站点');
   assert.equal(nested.repositoryAppearance.showRecentUpdates, false);
   assert.equal(nested.repositoryAppearance.showFileMetadata, before.repositoryAppearance.showFileMetadata);
   assert.equal(nested.repositoryAppearance.directoryLayout, before.repositoryAppearance.directoryLayout);
   assert.equal(nested.repositoryAppearance.surfaceOpacity, before.repositoryAppearance.surfaceOpacity);
+  assert.equal(nested.contentVisibility.articles, before.contentVisibility.articles);
+  assert.equal(nested.contentVisibility.gallery, false);
+  assert.equal(nested.contentVisibility.repository, before.contentVisibility.repository);
   assert.deepEqual(nested.browsing, before.browsing);
 
   const persisted = await dataStore.readSettings();
   assert.equal(persisted.siteName, '部分更新站点');
   assert.equal(persisted.repositoryAppearance.showRecentUpdates, false);
   assert.equal(persisted.repositoryAppearance.showDescriptions, before.repositoryAppearance.showDescriptions);
+  assert.equal(persisted.contentVisibility.gallery, false);
 });
 
 test('rejects stale post saves and duplicate slugs', async () => {
@@ -1377,6 +1388,7 @@ test('validates customization boundaries', () => {
   assert.equal(migrated.galleryDescription, '项目、作品与视觉记录。');
   assert.equal(migrated.repositoryTitle, '仓库');
   assert.equal(migrated.repositoryDescription, '代码、工具与项目归档。');
+  assert.deepEqual(migrated.contentVisibility, { articles: true, gallery: true, repository: true });
   const current = settingsSchema.parse(settings);
   assert.equal(settingsSchema.safeParse({ ...current, footerMode: 'surface' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, galleryDescription: 'x'.repeat(241) }).success, false);
@@ -1386,6 +1398,8 @@ test('validates customization boundaries', () => {
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: '' }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(240) }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(241) }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, contentVisibility: { ...current.contentVisibility, articles: false } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, contentVisibility: { ...current.contentVisibility, gallery: 'false' } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: 'https://example.com/avatar.png' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, webIcon: '/media/icon.svg' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: null, webIcon: null }).success, true);

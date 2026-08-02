@@ -240,6 +240,23 @@ const settingsV10Schema = z.object({
   browsing: browsingSchema,
 });
 
+const contentVisibilitySchema = z.object({
+  articles: z.boolean(),
+  gallery: z.boolean(),
+  repository: z.boolean(),
+});
+
+export const defaultContentVisibility = {
+  articles: true,
+  gallery: true,
+  repository: true,
+} as const;
+
+const settingsV11Schema = settingsV10Schema.extend({
+  version: z.literal(11),
+  contentVisibility: contentVisibilitySchema,
+});
+
 const defaultRepositorySettings = {
   repositoryTitle: '仓库',
   repositoryDescription: '代码、工具与项目归档。',
@@ -264,15 +281,23 @@ function upgradeLegacySettings(legacy: z.infer<typeof settingsV2Schema>) {
   });
 }
 
+function upgradeV10Settings(legacy: z.infer<typeof settingsV10Schema>) {
+  return settingsV11Schema.parse({
+    ...legacy,
+    version: 11,
+    contentVisibility: defaultContentVisibility,
+  });
+}
+
 function upgradeV9Settings(legacy: z.infer<typeof settingsV9Schema>) {
-  return settingsV10Schema.parse({
+  return upgradeV10Settings(settingsV10Schema.parse({
     ...legacy,
     version: 10,
     repositoryAppearance: {
       ...legacy.repositoryAppearance,
       showRecentUpdates: legacy.repositoryAppearance.showFileMetadata,
     },
-  });
+  }));
 }
 
 function upgradeV8Settings(legacy: z.infer<typeof settingsV8Schema>) {
@@ -371,7 +396,8 @@ function upgradeV3Settings(legacy: z.infer<typeof settingsV3Schema>) {
 }
 
 export const settingsSchema = z.union([
-  settingsV10Schema,
+  settingsV11Schema,
+  settingsV10Schema.transform(upgradeV10Settings),
   settingsV9Schema.transform(upgradeV9Settings),
   settingsV8Schema.transform(upgradeV8Settings),
   settingsV7Schema.transform(upgradeV7Settings),

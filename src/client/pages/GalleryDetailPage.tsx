@@ -31,7 +31,7 @@ export function GalleryDetailPage() {
     }).catch((cause: Error) => setError(cause.message));
 
     const requests: Promise<unknown>[] = [];
-    if (config.showRecentPosts) requests.push(api.posts().then((posts) => setRecentPosts(posts.slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
+    if (config.showRecentPosts && settings.contentVisibility.articles) requests.push(api.posts().then((posts) => setRecentPosts(posts.slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
     if (config.showRecentGallery) requests.push(api.gallery().then((gallery) => {
       const selected = gallery.find((candidate) => candidate.id === id);
       const visible = gallery.slice(0, config.recentGalleryLimit);
@@ -40,7 +40,7 @@ export function GalleryDetailPage() {
         : visible);
     }).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
     void Promise.all(requests);
-  }, [id, navigate, settings.siteName, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
+  }, [id, navigate, settings.siteName, settings.contentVisibility.articles, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell listing-shell"><div className="empty-state"><h1>图片未找到</h1><p>{error}</p><Link className="button primary-button" to="/gallery">返回画廊</Link></div></main>;
   if (!item) return <main id="main" className="page-shell listing-shell"><p className="loading-state">正在载入图片…</p></main>;

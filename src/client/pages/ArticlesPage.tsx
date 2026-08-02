@@ -20,23 +20,32 @@ export function ArticlesPage() {
   const [railOpen, setRailOpen] = useListingRailPreference('blog-articles-rail');
 
   useEffect(() => {
-    document.title = `文章 · ${settings.siteName}`;
-  }, [settings.siteName]);
+    document.title = `${query.trim() ? '搜索' : '文章'} · ${settings.siteName}`;
+  }, [query, settings.siteName]);
 
   useEffect(() => {
+    let active = true;
     window.scrollTo(0, 0);
+    setError('');
+    if (!settings.contentVisibility.articles) {
+      setPosts([]);
+      setLoading(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
     void api.posts()
-      .then(setPosts)
-      .catch((cause: Error) => setError(cause.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .then((items) => { if (active) setPosts(items); })
+      .catch((cause: Error) => { if (active) setError(cause.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [settings.contentVisibility.articles]);
 
   useEffect(() => {
     let active = true;
     const trimmedQuery = query.trim();
     setGalleryError('');
     setGallery([]);
-    if (trimmedQuery) {
+    if (trimmedQuery && settings.contentVisibility.gallery) {
       setGalleryLoading(true);
       void api.gallery(trimmedQuery)
         .then((items) => { if (active) setGallery(items); })
@@ -47,9 +56,9 @@ export function ArticlesPage() {
       setGalleryLoading(false);
     }
     return () => { active = false; };
-  }, [query]);
+  }, [query, settings.contentVisibility.gallery]);
 
   return <main id="main" className="page-shell listing-shell">
-    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" railOpen={railOpen} onRailOpenChange={setRailOpen} showResultStatus={false} plain />
+    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" railOpen={railOpen} onRailOpenChange={setRailOpen} showResultStatus={false} showArticles={settings.contentVisibility.articles} plain />
   </main>;
 }

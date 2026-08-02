@@ -4,14 +4,14 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
 import sharp from 'sharp';
-import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { codeToolsIndexSchema, defaultContentVisibility, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
 import { validateCodeToolProjectPath, codeToolPathError } from './codeToolPaths.js';
 
 const defaultSettings: SiteSettings = {
-  version: 10,
+  version: 11,
   siteName: "CocyNoric's Blog",
   homeTitle: "CocyNoric's Blog",
   footerText: "CocyNoric's Blog",
@@ -19,6 +19,7 @@ const defaultSettings: SiteSettings = {
   repositoryTitle: '仓库',
   repositoryDescription: '代码、工具与项目归档。',
   repositoryAppearance: defaultRepositoryAppearance,
+  contentVisibility: defaultContentVisibility,
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,
@@ -166,6 +167,7 @@ function mergeSettings(current: SiteSettings, input: unknown) {
   };
 
   mergeNested('repositoryAppearance', current.repositoryAppearance);
+  mergeNested('contentVisibility', current.contentVisibility);
   mergeNested('homeContent', current.homeContent);
   mergeNested('homeHero', current.homeHero);
 

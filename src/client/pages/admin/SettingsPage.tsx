@@ -70,6 +70,7 @@ export function SettingsPage() {
   const update = <K extends keyof SiteSettings>(key: K, value: SiteSettings[K]) => setSettings((current) => current ? { ...current, [key]: value } : current);
   const updateArticle = <K extends keyof SiteSettings['browsing']['article']>(key: K, value: SiteSettings['browsing']['article'][K]) => setSettings((current) => current ? { ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, [key]: value } } } : current);
   const updateGallery = <K extends keyof SiteSettings['browsing']['gallery']>(key: K, value: SiteSettings['browsing']['gallery'][K]) => setSettings((current) => current ? { ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, [key]: value } } } : current);
+  const updateVisibility = <K extends keyof SiteSettings['contentVisibility']>(key: K, value: SiteSettings['contentVisibility'][K]) => setSettings((current) => current ? { ...current, contentVisibility: { ...current.contentVisibility, [key]: value } } : current);
   const updateRepositoryAppearance = <K extends keyof SiteSettings['repositoryAppearance']>(key: K, value: SiteSettings['repositoryAppearance'][K]) => setSettings((current) => current ? { ...current, repositoryAppearance: { ...current.repositoryAppearance, [key]: value } } : current);
   const backgroundVisibility = Math.round((1 - settings.backgroundOverlay) * 100);
 
@@ -108,10 +109,10 @@ export function SettingsPage() {
     </section>
     <section className="settings-section"><h2>首页展示</h2>
       <p className="settings-help">只影响首页文章和画廊最大区域，不改变独立列表页。</p>
-      <RangeSetting label="首页文章数量" value={settings.homeContent.articleLimit} defaultValue={4} min={1} max={12} onChange={(value) => update('homeContent', { ...settings.homeContent, articleLimit: value })} />
-      <RangeSetting label="首页图片数量" value={settings.homeContent.galleryLimit} defaultValue={6} min={1} max={20} onChange={(value) => update('homeContent', { ...settings.homeContent, galleryLimit: value })} />
-      <RangeSetting label="文章区域透明度" value={Math.round(settings.homeContent.articleSurfaceOpacity * 100)} defaultValue={94} min={0} max={100} suffix="%" onChange={(value) => update('homeContent', { ...settings.homeContent, articleSurfaceOpacity: value / 100 })} />
-      <RangeSetting label="画廊区域透明度" value={Math.round(settings.homeContent.gallerySurfaceOpacity * 100)} defaultValue={0} min={0} max={100} suffix="%" onChange={(value) => update('homeContent', { ...settings.homeContent, gallerySurfaceOpacity: value / 100 })} />
+      <RangeSetting label="首页文章数量" value={settings.homeContent.articleLimit} defaultValue={4} min={1} max={12} disabled={!settings.contentVisibility.articles} onChange={(value) => update('homeContent', { ...settings.homeContent, articleLimit: value })} />
+      <RangeSetting label="首页图片数量" value={settings.homeContent.galleryLimit} defaultValue={6} min={1} max={20} disabled={!settings.contentVisibility.gallery} onChange={(value) => update('homeContent', { ...settings.homeContent, galleryLimit: value })} />
+      <RangeSetting label="文章区域透明度" value={Math.round(settings.homeContent.articleSurfaceOpacity * 100)} defaultValue={94} min={0} max={100} suffix="%" disabled={!settings.contentVisibility.articles} onChange={(value) => update('homeContent', { ...settings.homeContent, articleSurfaceOpacity: value / 100 })} />
+      <RangeSetting label="画廊区域透明度" value={Math.round(settings.homeContent.gallerySurfaceOpacity * 100)} defaultValue={0} min={0} max={100} suffix="%" disabled={!settings.contentVisibility.gallery} onChange={(value) => update('homeContent', { ...settings.homeContent, gallerySurfaceOpacity: value / 100 })} />
     </section>
     <section className="settings-section"><h2>个人简介</h2>
       <label className="form-field"><span>个人名称</span><input value={settings.profileName} maxLength={80} onChange={(event) => update('profileName', event.target.value)} required /><small>显示在文章和图片详情页的信息栏</small></label>
@@ -154,6 +155,10 @@ export function SettingsPage() {
   const renderArticleBrowsing = () => {
     const config = settings.browsing.article;
     return <div className="settings-grid">
+      <section className="settings-section span-2"><h2>文章页面</h2>
+        <p className="settings-help">关闭后，前台导航、首页文章区域、文章列表与文章详情都会隐藏；后台文章管理不受影响。</p>
+        <ToggleField label="在公开站点显示文章" checked={settings.contentVisibility.articles} onChange={(value) => updateVisibility('articles', value)} />
+      </section>
       <section className="settings-section"><h2>文章信息栏</h2>
         <p className="settings-help">桌面端可调整信息栏位置和宽度；900px 以下会自动改为主内容在前的信息栏布局。</p>
         <SelectField label="信息栏位置" value={config.railSide} options={[{ value: 'left', label: '左侧' }, { value: 'right', label: '右侧' }]} onChange={(value) => updateArticle('railSide', value)} />
@@ -175,6 +180,10 @@ export function SettingsPage() {
   const renderGalleryBrowsing = () => {
     const config = settings.browsing.gallery;
     return <div className="settings-grid">
+      <section className="settings-section span-2"><h2>画廊页面</h2>
+        <p className="settings-help">关闭后，前台导航、首页画廊区域、画廊列表与图片详情都会隐藏；后台画廊管理不受影响。</p>
+        <ToggleField label="在公开站点显示画廊" checked={settings.contentVisibility.gallery} onChange={(value) => updateVisibility('gallery', value)} />
+      </section>
       <section className="settings-section"><h2>画廊标题</h2>
         <label className="form-field"><span>画廊说明</span><textarea rows={3} value={settings.galleryDescription} maxLength={240} onChange={(event) => update('galleryDescription', event.target.value)} /><small>显示在首页和画廊列表的“画廊”标题右侧</small></label>
       </section>
@@ -204,6 +213,10 @@ export function SettingsPage() {
   const renderRepository = () => {
     const appearance = settings.repositoryAppearance;
     return <div className="settings-grid">
+      <section className="settings-section span-2"><h2>仓库页面</h2>
+        <p className="settings-help">关闭后，前台导航与全部公开仓库页面都会隐藏；后台文件管理不受影响。文章或画廊关闭时，仓库也会自动隐藏对应目录。</p>
+        <ToggleField label="在公开站点显示仓库" checked={settings.contentVisibility.repository} onChange={(value) => updateVisibility('repository', value)} />
+      </section>
       <section className="settings-section"><h2>仓库内容</h2>
         <label className="form-field"><span>仓库标题</span><input value={settings.repositoryTitle} maxLength={120} onChange={(event) => update('repositoryTitle', event.target.value)} required /><small>显示在仓库页主标题和浏览器标题</small></label>
         <label className="form-field"><span>仓库说明</span><textarea rows={3} value={settings.repositoryDescription} maxLength={240} onChange={(event) => update('repositoryDescription', event.target.value)} /><small>显示在仓库页标题旁；留空时不显示说明</small></label>

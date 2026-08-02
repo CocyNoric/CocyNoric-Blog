@@ -23,23 +23,24 @@ type ArticleSectionProps = {
   railOpen?: boolean;
   onRailOpenChange?: (open: boolean) => void;
   showResultStatus?: boolean;
+  showArticles?: boolean;
   plain?: boolean;
 };
 
-export function ArticleSection({ posts, galleryItems = [], galleryLoading = false, galleryError = '', loading, error = '', headingLevel = 'h2', limit, moreLink, surfaceOpacity, railOpen = false, onRailOpenChange, showResultStatus = true, plain = false }: ArticleSectionProps) {
+export function ArticleSection({ posts, galleryItems = [], galleryLoading = false, galleryError = '', loading, error = '', headingLevel = 'h2', limit, moreLink, surfaceOpacity, railOpen = false, onRailOpenChange, showResultStatus = true, showArticles = true, plain = false }: ArticleSectionProps) {
   const Heading = headingLevel;
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
   const activeTag = searchParams.get('tag') ?? '';
-  const allTags = useMemo(() => [...new Set(posts.flatMap((post) => post.tags))].slice(0, 12), [posts]);
+  const allTags = useMemo(() => showArticles ? [...new Set(posts.flatMap((post) => post.tags))].slice(0, 12) : [], [posts, showArticles]);
   const filteredPosts = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('zh-CN');
-    return posts.filter((post) => {
+    return showArticles ? posts.filter((post) => {
       const matchesTag = !activeTag || post.tags.includes(activeTag);
       const text = `${post.title} ${post.excerpt} ${post.tags.join(' ')}`.toLocaleLowerCase('zh-CN');
       return matchesTag && (!needle || text.includes(needle));
-    });
-  }, [posts, query, activeTag]);
+    }) : [];
+  }, [posts, query, activeTag, showArticles]);
 
   const filteredGallery = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('zh-CN');
@@ -63,8 +64,8 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
   const articleGrid = <div className="post-grid">{(limit === undefined ? filteredPosts : filteredPosts.slice(0, limit)).map((post) => <PostCard post={post} key={post.id} />)}</div>;
 
   return <section id="articles" className={`content-section article-section${plain ? ' article-section-plain' : ''}${surfaceOpacity === undefined ? '' : ' home-surface'}`} aria-labelledby="articles-heading" style={surfaceOpacity === undefined ? undefined : { '--surface-opacity': surfaceOpacity } as React.CSSProperties}>
-    <div className="section-heading"><div><p className="eyebrow">Articles</p><Heading id="articles-heading">文章</Heading></div>
-      {onRailOpenChange && <div className="listing-view-controls"><ListingRailToggle open={railOpen} onChange={onRailOpenChange} /></div>}
+    <div className="section-heading"><div><p className="eyebrow">{showArticles ? 'Articles' : 'Search'}</p><Heading id="articles-heading">{showArticles ? '文章' : '搜索结果'}</Heading></div>
+      {showArticles && onRailOpenChange && <div className="listing-view-controls"><ListingRailToggle open={railOpen} onChange={onRailOpenChange} /></div>}
     </div>
     {allTags.length > 0 && <div className="chip-row" aria-label="按标签筛选">
       <button className="chip" aria-pressed={!activeTag} onClick={() => updateTag('')}>全部</button>
@@ -76,13 +77,13 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
     {!loading && !galleryLoading && !error && !galleryError && filteredPosts.length === 0 && filteredGallery.length === 0 && <div className="empty-state">
       <h2>没有找到相关内容</h2><p>换一个关键词，或者清除当前筛选。</p><button className="button secondary-button" onClick={clearFilters}>清除筛选</button>
     </div>}
-    {limit === undefined && filteredPosts.length > 0
+    {showArticles && limit === undefined && filteredPosts.length > 0
       ? <ArticleShowcase
         posts={filteredPosts}
         railOpen={railOpen}
         rail={articleRail}
       />
-      : articleGrid}
+      : showArticles ? articleGrid : null}
     {filteredGallery.length > 0 && <div className="search-gallery-results"><div className="section-heading"><div><p className="eyebrow">Gallery</p><h2>画廊</h2></div></div><div className="gallery-grid">{filteredGallery.map((item) => <GalleryCard item={item} key={item.id} />)}</div></div>}
     {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>Read more<ArrowIcon /></Link></div>}
   </section>;

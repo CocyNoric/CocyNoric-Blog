@@ -29,9 +29,9 @@ export function PostPage() {
 
     const requests: Promise<unknown>[] = [];
     if (config.showRecentPosts) requests.push(api.posts().then((posts) => setRecentPosts(posts.filter((candidate) => candidate.slug !== slug).slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
-    if (config.showRecentGallery) requests.push(api.gallery().then((items) => setGalleryItems(items.slice(0, config.recentGalleryLimit))).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
+    if (config.showRecentGallery && settings.contentVisibility.gallery) requests.push(api.gallery().then((items) => setGalleryItems(items.slice(0, config.recentGalleryLimit))).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
     void Promise.all(requests);
-  }, [slug, settings.siteName, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
+  }, [slug, settings.siteName, settings.contentVisibility.gallery, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell"><div className="empty-state"><h1>文章未找到</h1><p>{error}</p><Link className="button primary-button" to="/articles">返回文章列表</Link></div></main>;
   if (!post) return <main id="main" className="page-shell"><p className="loading-state">正在载入文章…</p></main>;

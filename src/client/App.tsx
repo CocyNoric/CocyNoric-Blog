@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { SiteFooter } from './components/SiteFooter.js';
 import { SiteHeader } from './components/SiteHeader.js';
 import { useAuth } from './hooks/useAuth.js';
@@ -22,6 +22,20 @@ function ProtectedRoute() {
   return authenticated ? <Outlet /> : <Navigate to="/admin/login" replace />;
 }
 
+function PublicFeatureRoute({ feature }: { feature: 'articles' | 'gallery' | 'repository' }) {
+  const { settings, loading } = useSettings();
+  if (loading) return <main id="main" className="page-shell"><p className="loading-state">正在载入站点…</p></main>;
+  return settings.contentVisibility[feature] ? <Outlet /> : <Navigate to="/" replace />;
+}
+
+function PublicArticlesRoute() {
+  const { settings, loading } = useSettings();
+  const location = useLocation();
+  const hasSearchQuery = Boolean(new URLSearchParams(location.search).get('q')?.trim());
+  if (loading) return <main id="main" className="page-shell"><p className="loading-state">正在载入站点…</p></main>;
+  return settings.contentVisibility.articles || hasSearchQuery ? <ArticlesPage /> : <Navigate to="/" replace />;
+}
+
 function PublicLayout() {
   const { settings } = useSettings();
   return <div className="site-layout">
@@ -39,12 +53,18 @@ export function App() {
   return <Routes>
     <Route element={<PublicLayout />}>
       <Route index element={<HomePage />} />
-      <Route path="articles" element={<ArticlesPage />} />
-      <Route path="gallery" element={<PublicGalleryPage />} />
-      <Route path="repository" element={<RepositoryPage />} />
-      <Route path="repository/:directory/*" element={<RepositoryPage />} />
-      <Route path="gallery/:id" element={<GalleryDetailPage />} />
-      <Route path="posts/:slug" element={<PostPage />} />
+      <Route path="articles" element={<PublicArticlesRoute />} />
+      <Route element={<PublicFeatureRoute feature="articles" />}>
+        <Route path="posts/:slug" element={<PostPage />} />
+      </Route>
+      <Route element={<PublicFeatureRoute feature="gallery" />}>
+        <Route path="gallery" element={<PublicGalleryPage />} />
+        <Route path="gallery/:id" element={<GalleryDetailPage />} />
+      </Route>
+      <Route element={<PublicFeatureRoute feature="repository" />}>
+        <Route path="repository" element={<RepositoryPage />} />
+        <Route path="repository/:directory/*" element={<RepositoryPage />} />
+      </Route>
       <Route path="admin/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="admin/posts" element={<PostsPage />} />
