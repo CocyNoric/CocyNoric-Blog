@@ -19,16 +19,20 @@ type GallerySectionProps = {
   moreLink?: string;
   description?: string;
   surfaceOpacity?: number;
+  gridMaxColumns?: number;
+  showcaseCardImageLimit?: number;
   viewMode?: ListingViewMode;
   onViewModeChange?: (mode: ListingViewMode) => void;
   railOpen?: boolean;
   onRailOpenChange?: (open: boolean) => void;
 };
 
-export function GallerySection({ items, loading, error = '', headingLevel = 'h2', limit, moreLink, description = '项目、作品与视觉记录。', surfaceOpacity, viewMode, onViewModeChange, railOpen = false, onRailOpenChange }: GallerySectionProps) {
+export function GallerySection({ items, loading, error = '', headingLevel = 'h2', limit, moreLink, description = '项目、作品与视觉记录。', surfaceOpacity, gridMaxColumns = 3, showcaseCardImageLimit = 5, viewMode, onViewModeChange, railOpen = false, onRailOpenChange }: GallerySectionProps) {
   const Heading = headingLevel;
+  const normalizedGridMaxColumns = Math.min(6, Math.max(1, Math.trunc(gridMaxColumns)));
+  const normalizedShowcaseCardImageLimit = Math.min(20, Math.max(1, Math.trunc(showcaseCardImageLimit)));
   const galleryRail = <ListingInfoRail kind="gallery" total={items.length} context="全部画廊" />;
-  const galleryGrid = <div className="gallery-grid">{(limit === undefined ? items : items.slice(0, limit)).map((item) => <GalleryCard item={item} key={item.id} />)}</div>;
+  const galleryGrid = <div className={`gallery-grid${normalizedGridMaxColumns === 1 ? ' gallery-grid-single-column' : ''}`} style={{ '--gallery-grid-columns': normalizedGridMaxColumns } as CSSProperties}>{(limit === undefined ? items : items.slice(0, limit)).map((item) => <GalleryCard item={item} key={item.id} />)}</div>;
 
   return <section id="gallery" className={`content-section gallery-section${surfaceOpacity === undefined ? '' : ' home-surface'}`} aria-labelledby="gallery-heading" style={surfaceOpacity === undefined ? undefined : { '--surface-opacity': surfaceOpacity } as CSSProperties}>
     <div className="section-heading">
@@ -44,7 +48,7 @@ export function GallerySection({ items, loading, error = '', headingLevel = 'h2'
       ? <p className="loading-state">正在载入画廊…</p>
       : !error && (items.length > 0
         ? (viewMode === 'showcase' && limit === undefined
-          ? <GalleryShowcase items={items} railOpen={railOpen} rail={galleryRail} />
+          ? <GalleryShowcase items={items} cardImageLimit={normalizedShowcaseCardImageLimit} railOpen={railOpen} rail={galleryRail} />
           : viewMode && limit === undefined
             ? <ListingRailStage rail={galleryRail} railOpen={railOpen} railLabel="画廊浏览信息">{galleryGrid}</ListingRailStage>
             : galleryGrid)

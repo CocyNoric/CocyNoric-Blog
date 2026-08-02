@@ -26,6 +26,6 @@ export function PublicGalleryPage() {
   }, []);
 
   return <main id="main" className="page-shell listing-shell">
-    <GallerySection items={items} loading={loading} error={error} headingLevel="h1" description={settings.galleryDescription} viewMode={viewMode} onViewModeChange={setViewMode} railOpen={railOpen} onRailOpenChange={setRailOpen} />
+    <GallerySection items={items} loading={loading} error={error} headingLevel="h1" description={settings.galleryDescription} gridMaxColumns={settings.browsing.gallery.gridMaxColumns} showcaseCardImageLimit={settings.browsing.gallery.showcaseCardImageLimit} viewMode={viewMode} onViewModeChange={setViewMode} railOpen={railOpen} onRailOpenChange={setRailOpen} />
   </main>;
 }

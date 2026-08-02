@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
-import { ArrowIcon, CalendarIcon } from './Icons.js';
+import { ArrowIcon, CalendarIcon, DownloadIcon } from './Icons.js';
 import { ListingRailStage } from './ListingRailStage.js';
 
 type ShowcaseRailProps = {
@@ -9,18 +9,26 @@ type ShowcaseRailProps = {
   railOpen: boolean;
 };
 
-export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[] } & ShowcaseRailProps) {
+type ArticleShowcasePost = PostSummary & {
+  category?: string | null;
+};
+
+function articleCategoryLabel(post: ArticleShowcasePost) {
+  return post.category?.trim() || 'Category';
+}
+
+export function ArticleShowcase({ posts, rail, railOpen }: { posts: ArticleShowcasePost[] } & ShowcaseRailProps) {
   return <ListingRailStage rail={rail} railOpen={railOpen} railLabel="文章浏览信息" variant="feed">
     <section className="article-showcase-feed" aria-label="文章帖子">
       {posts.map((post) => <article className="showcase-card article-showcase-card" key={post.id}>
         <Link className="article-showcase-visual" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
-          <span className="showcase-kicker">Featured article</span>
+          <span className="showcase-kicker">{articleCategoryLabel(post)}</span>
           <h3>{post.title}</h3>
           <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
         </Link>
         <div className="showcase-item-info article-showcase-info">
           <div>
-            <span className="showcase-info-label">Description</span>
+            <span className="showcase-info-label">Abstract</span>
             <p>{post.excerpt || '打开文章阅读全文。'}</p>
           </div>
           <div className="showcase-meta-column">
@@ -33,17 +41,25 @@ export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[
   </ListingRailStage>;
 }
 
-export function GalleryShowcase({ items, rail, railOpen }: { items: GalleryItem[] } & ShowcaseRailProps) {
+function groupGalleryItems(items: GalleryItem[], size: number) {
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+}
+
+export function GalleryShowcase({ items, cardImageLimit, rail, railOpen }: { items: GalleryItem[]; cardImageLimit: number } & ShowcaseRailProps) {
+  const groups = groupGalleryItems(items, cardImageLimit);
   return <ListingRailStage rail={rail} railOpen={railOpen} railLabel="画廊浏览信息" variant="feed">
-    <section className="gallery-showcase-feed" aria-label="画廊帖子">
-      {items.map((item, index) => <article className="gallery-feed-post" key={item.id}>
-        <Link className="gallery-feed-media" to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
-          <img src={item.url} alt={item.title} loading={index === 0 ? 'eager' : 'lazy'} />
-        </Link>
-        <div className="gallery-feed-footer">
-          <h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3>
-        </div>
-      </article>)}
-    </section>
+    <div className="gallery-showcase-groups">
+      {groups.map((group, groupIndex) => <section className="gallery-showcase-feed" aria-label={`画廊帖子第 ${groupIndex + 1} 组`} key={group[0]!.id}>
+        {group.map((item, itemIndex) => <article className="gallery-feed-post" key={item.id}>
+          <Link className="gallery-feed-media" to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
+            <img src={item.url} alt={item.title} loading={groupIndex === 0 && itemIndex === 0 ? 'eager' : 'lazy'} />
+          </Link>
+          <div className="gallery-feed-footer">
+            <h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3>
+            <a className="icon-button gallery-feed-download" href={`/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`} download={item.originalFilename} title={`下载 ${item.title}`} aria-label={`下载图片：${item.title}`}><DownloadIcon /></a>
+          </div>
+        </article>)}
+      </section>)}
+    </div>
   </ListingRailStage>;
 }

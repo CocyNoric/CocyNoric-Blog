@@ -39,6 +39,8 @@ const browsingSchema = z.object({
   }),
   gallery: z.object({
     ...browsingBaseFields,
+    gridMaxColumns: z.number().int().min(1).max(6).default(3),
+    showcaseCardImageLimit: z.number().int().min(1).max(20).default(5),
     mediaWidth: z.number().int().min(560).max(1100),
     portraitMaxHeight: z.number().int().min(560).max(1200),
     thumbnailColumns: z.number().int().min(1).max(5),

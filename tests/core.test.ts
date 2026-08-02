@@ -229,6 +229,8 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.browsing.article.thumbnailColumns, 2);
   assert.equal(settings.browsing.article.thumbnailRows, 3);
   assert.equal(settings.browsing.gallery.railWidth, 340);
+  assert.equal(settings.browsing.gallery.gridMaxColumns, 3);
+  assert.equal(settings.browsing.gallery.showcaseCardImageLimit, 5);
   assert.equal(settings.browsing.gallery.mediaWidth, 705);
   assert.equal(settings.browsing.gallery.portraitMaxHeight, 880);
   assert.equal(settings.browsing.gallery.thumbnailColumns, 2);
@@ -296,7 +298,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     showRecentGallery: false, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820,
   });
   assert.deepEqual(migratedV1.browsing.gallery, {
-    railSide: 'right', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
+    railSide: 'right', railWidth: 340, gridMaxColumns: 3, showcaseCardImageLimit: 5, showRecentPosts: true, recentPostsLimit: 4,
     showRecentGallery: true, recentGalleryLimit: 6, mediaWidth: 705,
     portraitMaxHeight: 880, thumbnailColumns: 2, thumbnailRows: 3,
   });
@@ -362,7 +364,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
         showRecentGallery: true, recentGalleryLimit: 3, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 880,
       },
       gallery: {
-        railSide: 'left', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
+        railSide: 'left', railWidth: 420, gridMaxColumns: 5, showcaseCardImageLimit: 7, showRecentPosts: true, recentPostsLimit: 8,
         showRecentGallery: true, recentGalleryLimit: 3, mediaWidth: 880,
         portraitMaxHeight: 900, thumbnailColumns: 3, thumbnailRows: 2,
       },
@@ -377,6 +379,8 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(saved.browsing.article.railWidth, 420);
   assert.equal(saved.browsing.article.railSide, 'right');
   assert.equal(saved.browsing.gallery.railSide, 'left');
+  assert.equal(saved.browsing.gallery.gridMaxColumns, 5);
+  assert.equal(saved.browsing.gallery.showcaseCardImageLimit, 7);
   assert.equal(saved.browsing.gallery.mediaWidth, 880);
   assert.equal(saved.browsing.gallery.thumbnailColumns, 3);
 
@@ -388,6 +392,8 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(persisted.webIcon, null);
   assert.equal(persisted.browsing.article.railWidth, 420);
   assert.equal(persisted.browsing.gallery.recentGalleryLimit, 3);
+  assert.equal(persisted.browsing.gallery.gridMaxColumns, 5);
+  assert.equal(persisted.browsing.gallery.showcaseCardImageLimit, 7);
 });
 
 test('preserves omitted settings during partial top-level and nested saves', async () => {
@@ -1392,6 +1398,12 @@ test('validates customization boundaries', () => {
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, contentWidth: 1100 } } }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, mediaWidth: 1101 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, portraitMaxHeight: 559 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 0 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 6 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 7 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 0 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 20 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 21 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailColumns: 6 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailRows: 4 } } }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, homeHero: { minHeight: 680, titleAlign: 'left', contentOffset: 0 }, browsing: current.browsing }).success, true);

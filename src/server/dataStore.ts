@@ -58,6 +58,8 @@ const defaultSettings: SiteSettings = {
     gallery: {
       railSide: 'right',
       railWidth: 340,
+      gridMaxColumns: 3,
+      showcaseCardImageLimit: 5,
       showRecentPosts: true,
       recentPostsLimit: 4,
       showRecentGallery: true,

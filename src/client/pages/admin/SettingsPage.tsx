@@ -178,6 +178,10 @@ export function SettingsPage() {
       <section className="settings-section"><h2>画廊标题</h2>
         <label className="form-field"><span>画廊说明</span><textarea rows={3} value={settings.galleryDescription} maxLength={240} onChange={(event) => update('galleryDescription', event.target.value)} /><small>显示在首页和画廊列表的“画廊”标题右侧</small></label>
       </section>
+      <section className="settings-section"><h2>画廊列表</h2>
+        <RangeSetting label="网格模式最多展示列数" value={config.gridMaxColumns} defaultValue={3} min={1} max={6} onChange={(value) => updateGallery('gridMaxColumns', value)} help="默认 3 列；屏幕较窄时会自动减少列数" />
+        <RangeSetting label="每张展示卡片图片数量" value={config.showcaseCardImageLimit} defaultValue={5} min={1} max={20} onChange={(value) => updateGallery('showcaseCardImageLimit', value)} help="默认每张大卡片容纳 5 张；全部图片会自动分成多张卡片" />
+      </section>
       <section className="settings-section"><h2>画廊信息栏</h2>
         <p className="settings-help">桌面端可调整信息栏位置和宽度；900px 以下会自动改为主内容在前的信息栏布局。</p>
         <SelectField label="信息栏位置" value={config.railSide} options={[{ value: 'left', label: '左侧' }, { value: 'right', label: '右侧' }]} onChange={(value) => updateGallery('railSide', value)} />
