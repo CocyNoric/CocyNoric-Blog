@@ -10,7 +10,7 @@ import test, { after } from 'node:test';
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { postInputSchema, postMetaSchema, settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { postInputSchema, postMetaSchema, settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveGalleryImages }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -18,6 +18,7 @@ const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, cre
   import('../src/server/postImport.js'),
   import('../src/shared/search.js'),
   import('../src/server/galleryFilename.js'),
+  import('../src/server/media.js'),
   import('../src/server/codeTools.js'),
   import('../src/server/repositoryStore.js'),
   import('../src/shared/galleryCrop.js'),
@@ -110,6 +111,29 @@ function createProjectUpload(input: {
     },
   }) as Parameters<typeof receiveCodeToolProject>[0];
   const received = receiveCodeToolProject(request);
+  request.end(body);
+  return received;
+}
+
+function createGalleryUpload(files: Array<{ name: string; source: Buffer }>) {
+  const boundary = '----cocynoric-gallery-group';
+  const parts: Buffer[] = [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="title"\r\n\r\n组合测试\r\n`)];
+  for (const file of files) {
+    parts.push(
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="images"; filename="${file.name}"\r\nContent-Type: image/png\r\n\r\n`),
+      file.source,
+      Buffer.from('\r\n'),
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  const body = Buffer.concat(parts);
+  const request = Object.assign(new PassThrough(), {
+    headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-length': String(body.length),
+    },
+  }) as Parameters<typeof receiveGalleryImages>[0];
+  const received = receiveGalleryImages(request);
   request.end(body);
   return received;
 }
@@ -552,6 +576,60 @@ test('stores gallery files under sequential identifiers without reusing deleted 
   await dataStore.deleteGalleryItem(second.id);
 });
 
+test('stores multiple gallery images as one item and derives the selected cover', async () => {
+  const temporaryPaths = ['group-one.png', 'group-two.png', 'group-three.png'].map((filename) => path.join(dataStore.paths.tmp, filename));
+  await Promise.all(temporaryPaths.map((temporaryPath) => writeFile(temporaryPath, png)));
+  const item = await dataStore.addGalleryGroup({
+    title: '组合画廊',
+    description: '三张图片，一个展示单位',
+    category: '作品 / 组合',
+    images: temporaryPaths.map((temporaryPath, index) => ({
+      temporaryPath,
+      originalFilename: index === 2 ? 'group-two.png' : path.basename(temporaryPath),
+      width: 1,
+      height: 1,
+    })),
+    coverIndex: 1,
+  });
+
+  assert.equal(item.images.length, 3);
+  assert.equal(item.coverImageId, '0002');
+  assert.equal(item.url, item.images[1]?.url);
+  assert.equal(item.originalFilename, item.images[1]?.originalFilename);
+  assert.deepEqual(item.images.map((image) => image.displayFilename), ['display-0001.webp', 'display-0002.webp', 'display-0003.webp']);
+  assert.deepEqual(item.images.map((image) => image.originalFilename), ['group-one.png', 'group-two.png', 'group-two-2.png']);
+  for (const image of item.images) {
+    assert.deepEqual(await readFile(dataStore.galleryMediaFilePath(item, image)), png);
+    assert.equal((await readFile(dataStore.galleryMediaDisplayFilePath(item, image))).subarray(8, 12).toString('ascii'), 'WEBP');
+  }
+
+  const updated = await dataStore.updateGalleryItem(item.id, {
+    title: item.title,
+    description: item.description,
+    category: item.category,
+    coverImageId: '0003',
+    imageOrder: ['0003', '0001', '0002'],
+    cardFocus: item.cardFocus,
+    cardAspectRatio: item.cardAspectRatio,
+    thumbnailFocus: item.thumbnailFocus,
+    thumbnailAspectRatio: item.thumbnailAspectRatio,
+    cropPositioning: item.cropPositioning,
+  });
+  assert.equal(updated?.coverImageId, '0003');
+  assert.deepEqual(updated?.images.map((image) => image.mediaId), ['0003', '0001', '0002']);
+  assert.equal(updated?.url, updated?.images[0]?.url);
+  assert.deepEqual((await dataStore.listGallery()).find((candidate) => candidate.id === item.id)?.images.map((image) => image.mediaId), ['0003', '0001', '0002']);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, coverImageId: '0030' }), /缩略图不存在/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, imageOrder: ['0003', '0001'] }), /完整包含/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, imageOrder: ['0003', '0003', '0002'] }), /重复 ID/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, coverImageId: '0001', imageOrder: ['0003', '0001', '0002'] }), /第一张图片/);
+
+  const listing = await repositoryTree('gallery', item.id);
+  assert.equal(listing.entries.length, 6);
+  assert.deepEqual(listing.entries.map((entry) => entry.name), ['display-0001.webp', 'display-0002.webp', 'display-0003.webp', 'group-one.png', 'group-two-2.png', 'group-two.png']);
+  await dataStore.deleteGalleryItem(item.id);
+});
+
 test('keeps large gallery originals and creates smaller WebP display copies', async () => {
   const temporaryPath = path.join(dataStore.paths.tmp, 'large-original.png');
   const original = Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]);
@@ -813,6 +891,20 @@ test('validates cross-platform gallery filenames without renaming safe names', (
     assert.throws(() => validateGalleryFilename(filename, 'image/png'), /文件名无效/);
   }
   assert.throws(() => validateGalleryFilename('photo.jpg', 'image/png'), /扩展名不一致/);
+});
+
+test('receives multiple gallery images in queue order', async () => {
+  const upload = await createGalleryUpload([
+    { name: 'first.png', source: png },
+    { name: 'second.png', source: png },
+  ]);
+  try {
+    assert.equal(upload.fields.title, '组合测试');
+    assert.deepEqual(upload.images.map((image) => image.originalFilename), ['first.png', 'second.png']);
+    assert.deepEqual(await Promise.all(upload.images.map((image) => readFile(image.temporaryPath))), [png, png]);
+  } finally {
+    await Promise.all(upload.images.map((image) => unlink(image.temporaryPath).catch(() => undefined)));
+  }
 });
 
 test('migrates legacy storage into article projects without changing security data', async () => {

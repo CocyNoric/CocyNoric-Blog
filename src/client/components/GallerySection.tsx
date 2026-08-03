@@ -62,7 +62,7 @@ export function GallerySection({ items, loading, error = '', headingLevel = 'h2'
           : viewMode && limit === undefined
             ? <ListingRailStage rail={galleryRail} railOpen={railOpen} railLabel="画廊浏览信息">{galleryGrid}</ListingRailStage>
             : galleryGrid)
-        : <div className="gallery-empty">{items.length > 0 ? '当前分类还没有图片。' : '画廊还没有图片。'}</div>)}
+        : <div className="gallery-empty">{items.length > 0 ? '当前分类还没有画廊展示。' : '画廊还没有展示内容。'}</div>)}
     {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>View more<ArrowIcon /></Link></div>}
   </section>;
 }

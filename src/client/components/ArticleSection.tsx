@@ -72,7 +72,7 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
     <div className="section-heading"><div><p className="eyebrow">{showArticles ? 'Articles' : 'Search'}</p><Heading id="articles-heading">{showArticles ? '文章' : '搜索结果'}</Heading></div>
       {showArticles && onRailOpenChange && <div className="listing-view-controls"><ListingRailToggle open={railOpen} onChange={onRailOpenChange} /></div>}
     </div>
-    {showResultStatus && <p className="result-status" aria-live="polite">{loading ? '正在载入文章' : query ? `共 ${filteredPosts.length} 篇文章、${galleryLoading ? '…' : filteredGallery.length} 张图片` : `共 ${filteredPosts.length} 篇文章`}</p>}
+    {showResultStatus && <p className="result-status" aria-live="polite">{loading ? '正在载入文章' : query ? `共 ${filteredPosts.length} 篇文章、${galleryLoading ? '…' : filteredGallery.length} 个画廊展示` : `共 ${filteredPosts.length} 篇文章`}</p>}
     {error && <div className="message error-message" role="alert">{error}</div>}
     {galleryError && <div className="message error-message" role="alert">画廊搜索暂时无法载入：{galleryError}</div>}
     {!loading && !galleryLoading && !error && !galleryError && filteredPosts.length === 0 && filteredGallery.length === 0 && <div className="empty-state">

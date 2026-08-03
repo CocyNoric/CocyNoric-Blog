@@ -39,6 +39,21 @@ function writeHeaders(csrfToken: string) {
   return { 'X-CSRF-Token': csrfToken };
 }
 
+function appendGalleryFields(body: FormData, input: GalleryInput) {
+  body.append('title', input.title);
+  body.append('description', input.description);
+  body.append('category', input.category);
+  body.append('cardFocusX', String(input.cardFocus?.x ?? 0.5));
+  body.append('cardFocusY', String(input.cardFocus?.y ?? 0.5));
+  body.append('cardFocusSize', String(input.cardFocus?.size ?? 1));
+  body.append('cardAspectRatio', input.cardAspectRatio ?? 'original');
+  body.append('thumbnailFocusX', String(input.thumbnailFocus?.x ?? 0.5));
+  body.append('thumbnailFocusY', String(input.thumbnailFocus?.y ?? 0.5));
+  body.append('thumbnailFocusSize', String(input.thumbnailFocus?.size ?? 1));
+  body.append('thumbnailAspectRatio', input.thumbnailAspectRatio ?? '1:1');
+  body.append('cropPositioning', input.cropPositioning ?? 'center');
+}
+
 export const api = {
   settings: () => request<PublicSettings>('/api/settings'),
   repositoryOverview: () => request<RepositoryOverview>('/api/repository'),
@@ -118,19 +133,19 @@ export const api = {
   uploadGalleryItem: (input: GalleryInput, file: File, csrfToken: string) => {
     const body = new FormData();
     body.append('image', file);
-    body.append('title', input.title);
-    body.append('description', input.description);
-    body.append('category', input.category);
-    body.append('cardFocusX', String(input.cardFocus?.x ?? 0.5));
-    body.append('cardFocusY', String(input.cardFocus?.y ?? 0.5));
-    body.append('cardFocusSize', String(input.cardFocus?.size ?? 1));
-    body.append('cardAspectRatio', input.cardAspectRatio ?? 'original');
-    body.append('thumbnailFocusX', String(input.thumbnailFocus?.x ?? 0.5));
-    body.append('thumbnailFocusY', String(input.thumbnailFocus?.y ?? 0.5));
-    body.append('thumbnailFocusSize', String(input.thumbnailFocus?.size ?? 1));
-    body.append('thumbnailAspectRatio', input.thumbnailAspectRatio ?? '1:1');
-    body.append('cropPositioning', input.cropPositioning ?? 'center');
+    appendGalleryFields(body, input);
     return request<GalleryItem>('/api/admin/gallery', {
+      method: 'POST',
+      headers: writeHeaders(csrfToken),
+      body,
+    });
+  },
+  uploadGalleryGroup: (input: GalleryInput, files: File[], coverIndex: number, csrfToken: string) => {
+    const body = new FormData();
+    files.forEach((file) => body.append('images', file, file.name));
+    appendGalleryFields(body, input);
+    body.append('coverIndex', String(coverIndex));
+    return request<GalleryItem>('/api/admin/gallery/group', {
       method: 'POST',
       headers: writeHeaders(csrfToken),
       body,

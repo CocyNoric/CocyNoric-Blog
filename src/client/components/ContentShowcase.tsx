@@ -43,12 +43,13 @@ export function GalleryShowcase({ items, cardImageLimit, rail, railOpen }: { ite
     <div className="gallery-showcase-groups">
       {groups.map((group, groupIndex) => <section className="gallery-showcase-feed" aria-label={`画廊帖子第 ${groupIndex + 1} 组`} key={group[0]!.id}>
         {group.map((item, itemIndex) => <article className="gallery-feed-post" key={item.id}>
-          <Link className="gallery-feed-media" to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
+          <Link className="gallery-feed-media" to={`/gallery/${item.id}`} aria-label={`查看画廊展示：${item.title}`}>
             <img src={item.url} alt={item.title} loading={groupIndex === 0 && itemIndex === 0 ? 'eager' : 'lazy'} />
+            {item.images.length > 1 && <span className="gallery-image-count">{item.images.length} 张</span>}
           </Link>
           <div className="gallery-feed-footer">
             <div><h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3><Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link></div>
-            <a className="icon-button gallery-feed-download" href={`/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`} download={item.originalFilename} title={`下载 ${item.title}`} aria-label={`下载图片：${item.title}`}><DownloadIcon /></a>
+            {item.images.length === 1 && <a className="icon-button gallery-feed-download" href={`/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`} download={item.originalFilename} title={`下载 ${item.title}`} aria-label={`下载图片：${item.title}`}><DownloadIcon /></a>}
           </div>
         </article>)}
       </section>)}

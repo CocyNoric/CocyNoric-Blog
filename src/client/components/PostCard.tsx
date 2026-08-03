@@ -22,8 +22,9 @@ export function PostCard({ post }: { post: PostSummary }) {
 
 export function GalleryCard({ item }: { item: GalleryItem }) {
   return <article className="gallery-card">
-    <Link className="gallery-visual" style={{ aspectRatio: String(cardAspectRatio(item)) }} to={`/gallery/${item.id}`} aria-label={`查看图片：${item.title}`}>
+    <Link className="gallery-visual" style={{ aspectRatio: String(cardAspectRatio(item)) }} to={`/gallery/${item.id}`} aria-label={`查看画廊展示：${item.title}`}>
       <GalleryCropImage src={item.url} alt={item.title} loading="lazy" focus={item.cardFocus} aspectRatio={item.cardAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} />
+      {item.images.length > 1 && <span className="gallery-image-count">{item.images.length} 张</span>}
     </Link>
     <div className="gallery-copy">
       <h3>{item.title}</h3>

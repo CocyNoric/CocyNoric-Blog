@@ -80,7 +80,7 @@ publicRouter.get('/gallery/:id', async (req, res, next) => {
   try {
     const item = await dataStore.getGalleryItem(req.params.id);
     if (!item) {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     res.json(item);

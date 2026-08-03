@@ -4,7 +4,7 @@ import { galleryInputSchema, galleryOrderInputSchema, galleryUploadInputSchema, 
 import { requireAuth, requireWriteProtection } from '../auth.js';
 import { config } from '../config.js';
 import { dataStore } from '../dataStore.js';
-import { receiveImage } from '../media.js';
+import { receiveGalleryImages, receiveImage } from '../media.js';
 import { receivePostImport } from '../postImport.js';
 import { renderMarkdown } from '../markdown.js';
 import { receiveCodeTool, receiveCodeToolProject } from '../codeTools.js';
@@ -212,7 +212,7 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   try {
     const upload = await receiveImage(req, { fieldLimit: 12, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
     temporaryPath = upload.temporaryPath;
-    const input = galleryUploadInputSchema.parse(upload.fields);
+    const { coverIndex: _coverIndex, ...input } = galleryUploadInputSchema.parse(upload.fields);
     const item = await dataStore.addGalleryItem({
       ...input,
       temporaryPath: upload.temporaryPath,
@@ -224,6 +224,25 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
     res.status(201).json(item);
   } catch (error) {
     if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
+    next(error);
+  }
+});
+
+adminRouter.post('/gallery/group', requireWriteProtection, async (req, res, next) => {
+  let temporaryPaths: string[] = [];
+  try {
+    const upload = await receiveGalleryImages(req, { maximumFiles: 30, maximumBytes: config.galleryUploadLimit, fieldLimit: 12 });
+    temporaryPaths = upload.images.map((image) => image.temporaryPath);
+    const input = galleryUploadInputSchema.parse(upload.fields);
+    if (input.coverIndex >= upload.images.length) throw Object.assign(new Error('请选择有效的缩略图'), { status: 400 });
+    const item = await dataStore.addGalleryGroup({
+      ...input,
+      images: upload.images,
+    });
+    temporaryPaths = [];
+    res.status(201).json(item);
+  } catch (error) {
+    await Promise.all(temporaryPaths.map((temporaryPath) => unlink(temporaryPath).catch(() => undefined)));
     next(error);
   }
 });
@@ -240,12 +259,12 @@ adminRouter.put('/gallery/:id', requireWriteProtection, async (req, res, next) =
   try {
     const id = req.params.id;
     if (typeof id !== 'string') {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     const item = await dataStore.updateGalleryItem(id, galleryInputSchema.parse(req.body));
     if (!item) {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     res.json(item);
@@ -258,12 +277,12 @@ adminRouter.delete('/gallery/:id', requireWriteProtection, async (req, res, next
   try {
     const id = req.params.id;
     if (typeof id !== 'string') {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     const item = await dataStore.deleteGalleryItem(id);
     if (!item) {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     res.status(204).end();

@@ -507,7 +507,7 @@ const galleryFilenameSchema = z.string()
   .refine((value) => value !== '.' && value !== '..' && !/[. ]$/.test(value))
   .refine((value) => !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value));
 
-const galleryItemBaseSchema = z.object({
+const storedGalleryItemBaseSchema = z.object({
   id: galleryIdSchema,
   legacyId: z.string().uuid().optional(),
   url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
@@ -526,7 +526,34 @@ const galleryItemBaseSchema = z.object({
   height: z.number().int().positive().optional(),
 });
 
-function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSchema> | z.infer<typeof galleryItemBaseSchema>>(item: T) {
+export const galleryMediaIdSchema = z.string().regex(/^\d{4}$/);
+
+export const galleryMediaSchema = z.object({
+  mediaId: galleryMediaIdSchema,
+  url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
+  originalFilename: galleryFilenameSchema,
+  displayFilename: galleryFilenameSchema.optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+});
+
+const groupedGalleryItemBaseSchema = storedGalleryItemBaseSchema.extend({
+  coverImageId: galleryMediaIdSchema,
+  images: galleryMediaSchema.array().min(1).max(30),
+}).superRefine((item, context) => {
+  if (!item.images.some((image) => image.mediaId === item.coverImageId)) {
+    context.addIssue({ code: 'custom', path: ['coverImageId'], message: '画廊缩略图不在图片列表中' });
+  }
+  if (new Set(item.images.map((image) => image.mediaId)).size !== item.images.length) {
+    context.addIssue({ code: 'custom', path: ['images'], message: '画廊图片包含重复 ID' });
+  }
+  const filenames = item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US'));
+  if (new Set(filenames).size !== filenames.length) {
+    context.addIssue({ code: 'custom', path: ['images'], message: '画廊图片包含重复文件名' });
+  }
+});
+
+function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSchema> | z.infer<typeof storedGalleryItemBaseSchema>>(item: T) {
   const hasSplitConfiguration = item.cardFocus !== undefined || item.cardAspectRatio !== undefined;
   const legacyFocus = item.thumbnailFocus ?? defaultThumbnailFocus;
   const legacyAspectRatio = item.thumbnailAspectRatio ?? '4:3';
@@ -546,7 +573,31 @@ function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSche
 }
 
 export const legacyGalleryItemSchema = legacyGalleryItemBaseSchema.transform(normalizeGalleryItem);
-export const galleryItemSchema = galleryItemBaseSchema.transform(normalizeGalleryItem);
+export const galleryItemSchema = z.union([groupedGalleryItemBaseSchema, storedGalleryItemBaseSchema]).transform((raw) => {
+  const item = normalizeGalleryItem(raw);
+  const images = 'images' in raw
+    ? raw.images
+    : [{
+      mediaId: '0001',
+      url: raw.url,
+      originalFilename: raw.originalFilename,
+      displayFilename: raw.displayFilename,
+      width: raw.width,
+      height: raw.height,
+    }];
+  const coverImageId = 'coverImageId' in raw ? raw.coverImageId : '0001';
+  const cover = images.find((image) => image.mediaId === coverImageId) ?? images[0];
+  return {
+    ...item,
+    url: cover.url,
+    originalFilename: cover.originalFilename,
+    displayFilename: cover.displayFilename,
+    width: cover.width,
+    height: cover.height,
+    coverImageId: cover.mediaId,
+    images,
+  };
+});
 
 export const galleryIndexSchema = z.object({
   version: z.literal(1),
@@ -558,6 +609,10 @@ export const galleryInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
   category: postCategorySchema,
+  coverImageId: galleryMediaIdSchema.optional(),
+  imageOrder: galleryMediaIdSchema.array().min(1).max(30).superRefine((ids, context) => {
+    if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: '图片排序包含重复 ID' });
+  }).optional(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
@@ -578,7 +633,8 @@ export const galleryUploadInputSchema = z.object({
   thumbnailFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
   cropPositioning: cropPositioningSchema.default('center'),
-}).transform(({ title, description, category, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning }) => ({
+  coverIndex: z.coerce.number().int().min(0).max(29).default(0),
+}).transform(({ title, description, category, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning, coverIndex }) => ({
   title,
   description,
   category,
@@ -587,6 +643,7 @@ export const galleryUploadInputSchema = z.object({
   thumbnailAspectRatio,
   thumbnailFocus: { x: thumbnailFocusX, y: thumbnailFocusY, size: thumbnailFocusSize },
   cropPositioning,
+  coverIndex,
 }));
 
 const codeToolFilenameSchema = z.string()
@@ -660,6 +717,7 @@ export type ThumbnailAspectRatio = z.infer<typeof thumbnailAspectRatioSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
+export type GalleryMedia = z.infer<typeof galleryMediaSchema>;
 export type GalleryIndex = z.infer<typeof galleryIndexSchema>;
 export type GalleryOrderInput = z.infer<typeof galleryOrderInputSchema>;
 export type GalleryInput = z.infer<typeof galleryInputSchema>;

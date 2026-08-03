@@ -12,6 +12,7 @@ import { LoginPage } from './pages/admin/LoginPage.js';
 import { PostsPage } from './pages/admin/PostsPage.js';
 import { EditorPage } from './pages/admin/EditorPage.js';
 import { GalleryPage } from './pages/admin/GalleryPage.js';
+import { AdvancedGalleryUploadPage } from './pages/admin/AdvancedGalleryUploadPage.js';
 import { AdminRepositoryPage } from './pages/admin/RepositoryPage.js';
 import { useSettings } from './hooks/useSettings.js';
 import { SettingsPage } from './pages/admin/SettingsPage.js';
@@ -71,6 +72,7 @@ export function App() {
         <Route path="admin/posts/new" element={<EditorPage />} />
         <Route path="admin/posts/:id" element={<EditorPage />} />
         <Route path="admin/gallery" element={<GalleryPage />} />
+        <Route path="admin/gallery/upload" element={<AdvancedGalleryUploadPage />} />
         <Route path="admin/repository" element={<AdminRepositoryPage />} />
         <Route path="admin/settings" element={<SettingsPage />} />
       </Route>

@@ -4,7 +4,7 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
 import sharp from 'sharp';
-import { codeToolsIndexSchema, defaultContentVisibility, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { codeToolsIndexSchema, defaultContentVisibility, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type GalleryMedia, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
@@ -142,6 +142,15 @@ type PostStorageAsset = {
   temporaryPath: string;
   relativePath: string;
 };
+
+type GalleryImageUpload = {
+  temporaryPath: string;
+  originalFilename: string;
+  width?: number;
+  height?: number;
+};
+
+type GalleryMetadataInput = Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'category' | 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning'>>;
 
 type LocatedPost = {
   post: AdminPost;
@@ -572,9 +581,9 @@ export class DataStore {
     const input = galleryOrderInputSchema.parse(raw);
     return this.mutateGallery(async () => {
       const index = await this.readGalleryIndex();
-      if (input.ids.length !== index.items.length) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      if (input.ids.length !== index.items.length) throw Object.assign(new Error('画廊列表已变化，请刷新后重试'), { code: 'CONFLICT' });
       const byId = new Map(index.items.map((item) => [item.id, item]));
-      if (input.ids.some((id) => !byId.has(id))) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      if (input.ids.some((id) => !byId.has(id))) throw Object.assign(new Error('画廊列表已变化，请刷新后重试'), { code: 'CONFLICT' });
       const items = input.ids.map((id) => byId.get(id)!);
       await this.writeGalleryIndex({ ...index, items });
       return items;
@@ -593,8 +602,26 @@ export class DataStore {
     return path.join(this.paths.galleryRoot, item.id, item.displayFilename ?? item.originalFilename);
   }
 
+  galleryMediaFilePath(item: Pick<GalleryItem, 'id'>, image: Pick<GalleryMedia, 'originalFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, image.originalFilename);
+  }
+
+  galleryMediaDisplayFilePath(item: Pick<GalleryItem, 'id'>, image: Pick<GalleryMedia, 'originalFilename' | 'displayFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, image.displayFilename ?? image.originalFilename);
+  }
+
   private galleryDisplayFilename(originalFilename: string) {
     return originalFilename.toLocaleLowerCase('en-US') === 'display.webp' ? 'display-compressed.webp' : 'display.webp';
+  }
+
+  private uniqueGalleryFilename(filename: string, occupied: Set<string>) {
+    const extension = path.extname(filename);
+    const stem = path.basename(filename, extension);
+    let candidate = filename;
+    let suffix = 2;
+    while (occupied.has(candidate.toLocaleLowerCase('en-US'))) candidate = `${stem}-${suffix++}${extension}`;
+    occupied.add(candidate.toLocaleLowerCase('en-US'));
+    return candidate;
   }
 
   private async writeGalleryDisplayFile(source: string, destination: string) {
@@ -610,17 +637,41 @@ export class DataStore {
 
   private async ensureGalleryDisplayFiles() {
     await this.mutateGallery(async () => {
-      const index = await this.readGalleryIndex();
-      let changed = false;
+      const raw = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
+      const index = galleryIndexSchema.parse(raw);
+      let changed = JSON.stringify(raw) !== JSON.stringify(index);
       for (const item of index.items) {
-        const original = this.galleryFilePath(item);
-        const displayFilename = item.displayFilename ?? this.galleryDisplayFilename(item.originalFilename);
-        const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
-        if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
-        const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
-        if (item.displayFilename !== displayFilename || item.url !== expectedUrl) {
-          item.displayFilename = displayFilename;
-          item.url = expectedUrl;
+        const occupied = new Set(item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US')));
+        for (const image of item.images) {
+          const original = this.galleryMediaFilePath(item, image);
+          const preferredDisplayFilename = item.images.length === 1
+            ? this.galleryDisplayFilename(image.originalFilename)
+            : `display-${image.mediaId}.webp`;
+          const displayFilename = image.displayFilename ?? this.uniqueGalleryFilename(preferredDisplayFilename, occupied);
+          const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+          if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
+          const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
+          if (image.displayFilename !== displayFilename || image.url !== expectedUrl) {
+            image.displayFilename = displayFilename;
+            image.url = expectedUrl;
+            changed = true;
+          }
+        }
+        const cover = item.images.find((image) => image.mediaId === item.coverImageId) ?? item.images[0];
+        if (
+          item.coverImageId !== cover.mediaId
+          || item.originalFilename !== cover.originalFilename
+          || item.displayFilename !== cover.displayFilename
+          || item.url !== cover.url
+          || item.width !== cover.width
+          || item.height !== cover.height
+        ) {
+          item.coverImageId = cover.mediaId;
+          item.originalFilename = cover.originalFilename;
+          item.displayFilename = cover.displayFilename;
+          item.url = cover.url;
+          item.width = cover.width;
+          item.height = cover.height;
           changed = true;
         }
       }
@@ -628,41 +679,86 @@ export class DataStore {
     });
   }
 
-  async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'category' | 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
-    return this.mutateGallery(async () => {
-      const index = await this.readGalleryIndex();
-      const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
-      const occupied = entries
-        .filter((entry) => entry.isDirectory() && /^\d{8}$/.test(entry.name))
-        .map((entry) => Number(entry.name));
-      const sequence = Math.max(index.nextId, occupied.length ? Math.max(...occupied) + 1 : 1);
-      if (sequence > 99_999_999) throw new Error('画廊 ID 已用尽');
+  private async addGalleryGroupUnlocked(input: GalleryMetadataInput & { images: GalleryImageUpload[]; coverIndex: number }) {
+    if (input.images.length < 1 || input.images.length > 30) throw Object.assign(new Error('一个画廊条目需要包含 1 到 30 张图片'), { status: 400 });
+    if (input.coverIndex < 0 || input.coverIndex >= input.images.length) throw Object.assign(new Error('请选择有效的缩略图'), { status: 400 });
 
-      const id = String(sequence).padStart(8, '0');
-      const directory = path.join(this.paths.galleryRoot, id);
-      const destination = path.join(directory, input.originalFilename);
-      await mkdir(directory, { mode: 0o700 });
-      await rename(input.temporaryPath, destination);
+    const index = await this.readGalleryIndex();
+    const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
+    const occupiedIds = entries
+      .filter((entry) => entry.isDirectory() && /^\d{8}$/.test(entry.name))
+      .map((entry) => Number(entry.name));
+    const sequence = Math.max(index.nextId, occupiedIds.length ? Math.max(...occupiedIds) + 1 : 1);
+    if (sequence > 99_999_999) throw new Error('画廊 ID 已用尽');
 
-      try {
-        const displayFilename = this.galleryDisplayFilename(input.originalFilename);
-        await this.writeGalleryDisplayFile(destination, path.join(directory, displayFilename));
-        const item = galleryItemSchema.parse({
-          ...input,
-          temporaryPath: undefined,
-          id,
+    const id = String(sequence).padStart(8, '0');
+    const directory = path.join(this.paths.galleryRoot, id);
+    const occupiedFilenames = new Set<string>();
+    const moved: Array<{ source: string; destination: string }> = [];
+    await mkdir(directory, { mode: 0o700 });
+
+    try {
+      const originals = [] as Array<GalleryImageUpload & { mediaId: string; storedFilename: string }>;
+      for (const [imageIndex, upload] of input.images.entries()) {
+        if (path.basename(upload.originalFilename) !== upload.originalFilename || !upload.originalFilename) {
+          throw Object.assign(new Error('图片文件名无效'), { status: 400 });
+        }
+        const storedFilename = this.uniqueGalleryFilename(upload.originalFilename, occupiedFilenames);
+        const destination = path.join(directory, storedFilename);
+        await rename(upload.temporaryPath, destination);
+        moved.push({ source: upload.temporaryPath, destination });
+        originals.push({ ...upload, mediaId: String(imageIndex + 1).padStart(4, '0'), storedFilename });
+      }
+
+      const images: GalleryMedia[] = [];
+      for (const original of originals) {
+        const preferredDisplayFilename = originals.length === 1
+          ? this.galleryDisplayFilename(original.storedFilename)
+          : `display-${original.mediaId}.webp`;
+        const displayFilename = this.uniqueGalleryFilename(preferredDisplayFilename, occupiedFilenames);
+        await this.writeGalleryDisplayFile(path.join(directory, original.storedFilename), path.join(directory, displayFilename));
+        images.push({
+          mediaId: original.mediaId,
+          originalFilename: original.storedFilename,
           displayFilename,
           url: `/media/gallery/${id}/${encodeURIComponent(displayFilename)}`,
-          createdAt: new Date().toISOString(),
+          width: original.width,
+          height: original.height,
         });
-        await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
-        return item;
-      } catch (error) {
-        await rename(destination, input.temporaryPath).catch(() => undefined);
-        await rm(directory, { recursive: true, force: true }).catch(() => undefined);
-        throw error;
       }
+
+      const cover = images[input.coverIndex];
+      const { images: _uploads, coverIndex: _coverIndex, ...metadata } = input;
+      const item = galleryItemSchema.parse({
+        ...metadata,
+        id,
+        coverImageId: cover.mediaId,
+        originalFilename: cover.originalFilename,
+        displayFilename: cover.displayFilename,
+        url: cover.url,
+        width: cover.width,
+        height: cover.height,
+        images,
+        createdAt: new Date().toISOString(),
+      });
+      await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
+      return item;
+    } catch (error) {
+      for (const file of [...moved].reverse()) await rename(file.destination, file.source).catch(() => undefined);
+      await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async addGalleryItem(input: GalleryMetadataInput & GalleryImageUpload) {
+    return this.mutateGallery(async () => {
+      const { temporaryPath, originalFilename, width, height, ...metadata } = input;
+      return this.addGalleryGroupUnlocked({ ...metadata, images: [{ temporaryPath, originalFilename, width, height }], coverIndex: 0 });
     });
+  }
+
+  async addGalleryGroup(input: GalleryMetadataInput & { images: GalleryImageUpload[]; coverIndex: number }) {
+    return this.mutateGallery(() => this.addGalleryGroupUnlocked(input));
   }
 
   async updateGalleryItem(id: string, raw: GalleryInput) {
@@ -672,12 +768,28 @@ export class DataStore {
       const itemIndex = index.items.findIndex((candidate) => candidate.id === id || candidate.legacyId === id);
       if (itemIndex < 0) return null;
       const current = index.items[itemIndex];
-      const item = galleryItemSchema.parse({ ...current, ...input });
-      const transitionsToCenteredCrop = current.cropPositioning === 'legacy' && input.cropPositioning === 'center';
-      if ((transitionsToCenteredCrop || input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
-        const metadata = await sharp(this.galleryFilePath(item)).metadata();
-        item.width = metadata.width;
-        item.height = metadata.height;
+      const { imageOrder, ...metadata } = input;
+      let images = current.images;
+      if (imageOrder) {
+        const imageById = new Map(current.images.map((image) => [image.mediaId, image]));
+        if (imageOrder.length !== current.images.length || imageOrder.some((mediaId) => !imageById.has(mediaId))) {
+          throw Object.assign(new Error('图片排序必须完整包含当前画廊的所有图片'), { status: 400 });
+        }
+        images = imageOrder.map((mediaId) => imageById.get(mediaId)!);
+      }
+      if (metadata.coverImageId && !images.some((image) => image.mediaId === metadata.coverImageId)) {
+        throw Object.assign(new Error('选择的缩略图不存在'), { status: 400 });
+      }
+      if (imageOrder && metadata.coverImageId && metadata.coverImageId !== imageOrder[0]) {
+        throw Object.assign(new Error('缩略图必须是排序后的第一张图片'), { status: 400 });
+      }
+      const coverImageId = imageOrder?.[0] ?? metadata.coverImageId ?? current.coverImageId;
+      let item = galleryItemSchema.parse({ ...current, ...metadata, images, coverImageId });
+      const transitionsToCenteredCrop = current.cropPositioning === 'legacy' && metadata.cropPositioning === 'center';
+      if ((transitionsToCenteredCrop || metadata.cardAspectRatio === 'original' || metadata.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
+        const imageMetadata = await sharp(this.galleryFilePath(item)).metadata();
+        const nextImages = item.images.map((image) => image.mediaId === item.coverImageId ? { ...image, width: imageMetadata.width, height: imageMetadata.height } : image);
+        item = galleryItemSchema.parse({ ...item, images: nextImages });
       }
       index.items[itemIndex] = item;
       await this.writeGalleryIndex(index);

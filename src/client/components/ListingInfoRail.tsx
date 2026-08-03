@@ -20,7 +20,7 @@ export function ListingInfoRail({ kind, total, visible = total, context = '', ca
     </div>
     <p className="listing-rail-summary">
       <strong>{total}</strong>
-      <span>{article ? '篇文章' : '张图片'} <b aria-hidden="true">·</b> 当前显示 {visible}</span>
+      <span>{article ? '篇文章' : '个展示'} <b aria-hidden="true">·</b> 当前显示 {visible}</span>
     </p>
     {context && <div className="listing-rail-context"><span>当前范围</span><strong>{context}</strong></div>}
     {categories.length > 0 && <div className="listing-rail-reserved">
