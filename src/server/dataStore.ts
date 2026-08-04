@@ -150,7 +150,7 @@ type GalleryImageUpload = {
   height?: number;
 };
 
-type GalleryMetadataInput = Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'category' | 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning'>>;
+type GalleryMetadataInput = Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'category' | 'tags' | 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning'>>;
 
 type LocatedPost = {
   post: AdminPost;

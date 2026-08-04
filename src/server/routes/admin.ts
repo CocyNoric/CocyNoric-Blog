@@ -210,7 +210,7 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   let temporaryPath: string | null = null;
   try {
-    const upload = await receiveImage(req, { fieldLimit: 12, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
+    const upload = await receiveImage(req, { fieldLimit: 14, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
     temporaryPath = upload.temporaryPath;
     const { coverIndex: _coverIndex, ...input } = galleryUploadInputSchema.parse(upload.fields);
     const item = await dataStore.addGalleryItem({
@@ -231,7 +231,7 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery/group', requireWriteProtection, async (req, res, next) => {
   let temporaryPaths: string[] = [];
   try {
-    const upload = await receiveGalleryImages(req, { maximumFiles: 30, maximumBytes: config.galleryUploadLimit, fieldLimit: 12 });
+    const upload = await receiveGalleryImages(req, { maximumFiles: 30, maximumBytes: config.galleryUploadLimit, fieldLimit: 14 });
     temporaryPaths = upload.images.map((image) => image.temporaryPath);
     const input = galleryUploadInputSchema.parse(upload.fields);
     if (input.coverIndex >= upload.images.length) throw Object.assign(new Error('请选择有效的缩略图'), { status: 400 });

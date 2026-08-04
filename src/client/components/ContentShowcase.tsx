@@ -48,7 +48,7 @@ export function GalleryShowcase({ items, cardImageLimit, rail, railOpen }: { ite
             {item.images.length > 1 && <span className="gallery-image-count">{item.images.length} 张</span>}
           </Link>
           <div className="gallery-feed-footer">
-            <div><h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3><Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link></div>
+            <div><h3><Link to={`/gallery/${item.id}`}>{item.title}</Link></h3></div>
             {item.images.length === 1 && <a className="icon-button gallery-feed-download" href={`/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`} download={item.originalFilename} title={`下载 ${item.title}`} aria-label={`下载图片：${item.title}`}><DownloadIcon /></a>}
           </div>
         </article>)}

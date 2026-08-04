@@ -2,9 +2,8 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary } from '../../shared/types.js';
-import { categoryDisplayName } from '../../shared/categories.js';
 import { api } from '../api.js';
-import { ArrowIcon, DownloadIcon } from '../components/Icons.js';
+import { ArrowIcon } from '../components/Icons.js';
 import { DetailPageLayout } from '../components/DetailPageLayout.js';
 import { InformationBar } from '../components/InformationBar.js';
 import { useSettings } from '../hooks/useSettings.js';
@@ -19,9 +18,11 @@ export function GalleryDetailPage() {
   const [galleryItems, setGalleryItems] = useState<GalleryItem[] | undefined>();
   const [supplementalError, setSupplementalError] = useState('');
   const [error, setError] = useState('');
+  const [showAllImages, setShowAllImages] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    setShowAllImages(false);
     setItem(null); setError(''); setSupplementalError('');
     setRecentPosts(undefined); setGalleryItems(undefined);
     void api.galleryItem(id).then((value) => {
@@ -45,6 +46,8 @@ export function GalleryDetailPage() {
   if (error) return <main id="main" className="page-shell listing-shell"><div className="empty-state"><h1>画廊展示未找到</h1><p>{error}</p><Link className="button primary-button" to="/gallery">返回画廊</Link></div></main>;
   if (!item) return <main id="main" className="page-shell listing-shell"><p className="loading-state">正在载入画廊展示…</p></main>;
 
+  const visibleImages = showAllImages ? item.images : item.images.slice(0, 1);
+
   return <main id="main" className="page-shell detail-shell gallery-detail-shell" style={{ '--detail-shell-width': `${Math.max(1240, config.mediaWidth + config.railWidth + 20)}px`, '--gallery-portrait-max-height': `${config.portraitMaxHeight}px` } as CSSProperties}>
     <DetailPageLayout
       side={config.railSide}
@@ -54,15 +57,15 @@ export function GalleryDetailPage() {
       aside={<InformationBar profileName={settings.profileName} description={settings.description} profileAvatar={settings.profileAvatar} recentPosts={recentPosts} galleryItems={galleryItems} currentGalleryId={item.id} thumbnailColumns={config.thumbnailColumns} thumbnailRows={config.thumbnailRows} supplementalError={supplementalError} />}
     >
       <article className="gallery-detail">
-        <div className="gallery-detail-media-list" aria-label={`${item.title}，共 ${item.images.length} 张图片`}>{item.images.map((image, index) => <figure className="gallery-detail-media" key={image.mediaId}>
-          <img src={image.url} alt={`${item.title}（${index + 1}/${item.images.length}）`} />
-          <figcaption><span>{index + 1} / {item.images.length}{image.mediaId === item.coverImageId && <strong>卡片缩略图</strong>}</span><a className="icon-button" href={`/media/gallery/${item.id}/${encodeURIComponent(image.originalFilename)}`} download={image.originalFilename} title={`下载 ${image.originalFilename}`} aria-label={`下载第 ${index + 1} 张图片`}><DownloadIcon /></a></figcaption>
-        </figure>)}</div>
+        <div className="gallery-detail-media-list" id="gallery-detail-images" aria-label={`${item.title}，共 ${item.images.length} 张图片`}>{visibleImages.map((image, index) => <figure className="gallery-detail-media" key={image.mediaId}>
+          <img src={image.url} alt={`${item.title}（${index + 1}/${item.images.length}）`} loading={index === 0 ? 'eager' : 'lazy'} />
+        </figure>)}
+        {item.images.length > 1 && <button className="button secondary-button gallery-detail-expand" type="button" aria-expanded={showAllImages} aria-controls="gallery-detail-images" onClick={() => setShowAllImages((current) => !current)}>{showAllImages ? '收起其余图片' : `展开查看全部 ${item.images.length} 张图片`}</button>}
+        </div>
         <div className="gallery-detail-copy">
           <p className="eyebrow">Gallery</p>
-          <Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link>
           <h1>{item.title}</h1>
-          {item.images.length > 1 && <p className="gallery-detail-count">这一展示包含 {item.images.length} 张图片</p>}
+          {item.tags.length > 0 && <div className="gallery-detail-tags" aria-label="标签">{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
           {item.description && <p>{item.description}</p>}
         </div>
       </article>

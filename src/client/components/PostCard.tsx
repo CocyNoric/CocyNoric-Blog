@@ -28,7 +28,6 @@ export function GalleryCard({ item }: { item: GalleryItem }) {
     </Link>
     <div className="gallery-copy">
       <h3>{item.title}</h3>
-      <Link className="gallery-category-link" to={`/gallery?category=${encodeURIComponent(item.category)}`}>{categoryDisplayName(item.category)}</Link>
     </div>
   </article>;
 }

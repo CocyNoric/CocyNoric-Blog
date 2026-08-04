@@ -476,12 +476,23 @@ const cropPositioningSchema = z.enum(['legacy', 'center']);
 
 const defaultThumbnailFocus = { x: 0.5, y: 0.5, size: 1 };
 
+const galleryTagsSchema = z.array(z.string().trim().min(1).max(32)).max(12).transform((tags) => {
+  const seen = new Set<string>();
+  return tags.filter((tag) => {
+    const key = tag.toLocaleLowerCase('zh-CN');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+});
+
 const legacyGalleryItemBaseSchema = z.object({
   id: z.string().uuid(),
   url: localMediaPath,
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
   category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -516,6 +527,7 @@ const storedGalleryItemBaseSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
   category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -560,6 +572,7 @@ function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSche
 
   return {
     ...item,
+    tags: item.tags ?? (item.category === uncategorizedCategory ? [] : [item.category]),
     cardFocus: item.cardFocus ?? legacyFocus,
     cardAspectRatio: item.cardAspectRatio ?? legacyAspectRatio,
     thumbnailFocus: hasSplitConfiguration
@@ -609,6 +622,7 @@ export const galleryInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
   category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
   coverImageId: galleryMediaIdSchema.optional(),
   imageOrder: galleryMediaIdSchema.array().min(1).max(30).superRefine((ids, context) => {
     if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: '图片排序包含重复 ID' });
@@ -624,6 +638,10 @@ export const galleryUploadInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
   category: postCategorySchema,
+  tags: z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value) as unknown; } catch { return value; }
+  }, galleryTagsSchema.optional()),
   cardFocusX: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
@@ -634,10 +652,11 @@ export const galleryUploadInputSchema = z.object({
   thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
   cropPositioning: cropPositioningSchema.default('center'),
   coverIndex: z.coerce.number().int().min(0).max(29).default(0),
-}).transform(({ title, description, category, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning, coverIndex }) => ({
+}).transform(({ title, description, category, tags, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning, coverIndex }) => ({
   title,
   description,
   category,
+  tags,
   cardAspectRatio,
   cardFocus: { x: cardFocusX, y: cardFocusY, size: cardFocusSize },
   thumbnailAspectRatio,

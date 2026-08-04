@@ -7,6 +7,7 @@ import { AdminNav } from '../../components/AdminNav.js';
 import { ImageIcon, UploadIcon } from '../../components/Icons.js';
 import { validateImageFile } from '../../components/ImageDropField.js';
 import { SortableGalleryImageQueue } from '../../components/SortableGalleryImageQueue.js';
+import { TagInput } from '../../components/TagInput.js';
 import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
@@ -37,6 +38,7 @@ export function AdvancedGalleryUploadPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(uncategorizedCategory);
+  const [tags, setTags] = useState<string[]>([]);
   const [cardFocus, setCardFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [cardAspectRatio, setCardAspectRatio] = useState<ThumbnailAspectRatio>('original');
   const [thumbnailFocus, setThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
@@ -144,6 +146,7 @@ export function AdvancedGalleryUploadPage() {
       title,
       description,
       category,
+      tags,
       cardFocus,
       cardAspectRatio,
       thumbnailFocus,
@@ -165,6 +168,7 @@ export function AdvancedGalleryUploadPage() {
       setCardAspectRatio('original');
       setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 });
       setThumbnailAspectRatio('1:1');
+      setTags([]);
       setUploadedItem(item);
       setMessage(`已创建包含 ${item.images.length} 张图片的画廊展示单位。`);
     } catch (cause) {
@@ -187,11 +191,12 @@ export function AdvancedGalleryUploadPage() {
     <form className="advanced-upload-workspace" onSubmit={(event) => void upload(event)}>
       <section className="advanced-upload-batch" aria-labelledby="group-settings-heading">
         <div className="advanced-upload-section-heading">
-          <div><p className="eyebrow">展示信息</p><h2 id="group-settings-heading">一个条目，共用一组信息</h2><p>标题、说明和分类会应用到整个多图展示单位。</p></div>
+          <div><p className="eyebrow">展示信息</p><h2 id="group-settings-heading">一个条目，共用一组信息</h2><p>标题、说明、分类和标签会应用到整个多图展示单位。</p></div>
         </div>
         <div className="advanced-upload-batch-grid">
           <label className="form-field"><span>标题</span><input value={title} maxLength={120} disabled={uploading} onChange={(event) => setTitle(event.target.value)} placeholder="画廊展示标题" required /></label>
           <label className="form-field"><span>多级分类</span><input value={category} maxLength={131} disabled={uploading} onChange={(event) => setCategory(event.target.value)} placeholder="例如：作品 / 插画 / 人物" /><small>使用 / 分隔层级，最多 4 级</small></label>
+          <div className="form-field"><span>标签</span><TagInput value={tags} onChange={setTags} disabled={uploading} /><small>按回车或逗号添加，最多 12 个标签</small></div>
           <label className="form-field advanced-upload-description"><span>说明</span><textarea rows={2} value={description} maxLength={240} disabled={uploading} onChange={(event) => setDescription(event.target.value)} placeholder="对这一组图片的统一说明" /></label>
         </div>
       </section>

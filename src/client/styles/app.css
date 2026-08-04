@@ -455,20 +455,15 @@
 .thumbnail-focus-controls { display: grid; gap: 12px; padding-top: 4px; }
 .gallery-upload-panel .thumbnail-focus-editor { grid-column: 1 / -1; }
 .gallery-detail { overflow: hidden; border-radius: var(--radius-extra); background: var(--md-sys-color-surface); box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent); }
-.gallery-detail-media-list { display: grid; gap: 1px; background: var(--md-sys-color-outline-variant); }
+.gallery-detail-media-list { display: grid; gap: 0; background: var(--surface-container-low); }
 .gallery-detail-media { width: min(100%, var(--detail-primary-width, 705px)); display: grid; place-items: center; margin: 0; background: var(--surface-container-low); }
 .gallery-detail-media img { width: auto; max-width: 100%; height: auto; max-height: var(--gallery-portrait-max-height, 880px); }
-.gallery-detail-media figcaption { width: 100%; min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 12px 7px 18px; color: var(--md-sys-color-on-surface-variant); background: var(--md-sys-color-surface); font-size: .8rem; }
-.gallery-detail-media figcaption > span { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.gallery-detail-media figcaption strong { padding: 4px 8px; border-radius: 999px; color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container); font-size: .7rem; }
-.gallery-detail-media figcaption .icon-button { width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--md-sys-color-outline-variant); }
-.gallery-detail-media figcaption svg { width: 19px; }
+.gallery-detail-expand { justify-self: center; margin: 18px 16px 24px; }
 .detail-layout-header .back-link { margin-bottom: 24px; }
 .gallery-detail-copy { padding: clamp(24px, 5vw, 56px); text-align: left; }
-.gallery-detail-copy .gallery-category-link { margin: 6px 0 12px; }
 .gallery-detail-copy h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 4.5rem); line-height: 1.05; letter-spacing: -.05em; }
+.gallery-detail-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
 .gallery-detail-copy > p:last-child:not(.eyebrow) { max-width: 720px; margin: 20px 0 0; color: var(--md-sys-color-on-surface-variant); }
-.gallery-detail-copy .gallery-detail-count { margin: 14px 0 0; color: var(--md-sys-color-primary); font-size: .84rem; font-weight: 750; }
 .back-link { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--md-sys-color-primary); font-weight: 700; text-decoration: none; }
 .back-link svg { transform: rotate(180deg); }
 .article-surface { padding: clamp(26px, 6vw, 72px); border-radius: var(--radius-extra); background: var(--md-sys-color-surface); box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent); }
@@ -523,6 +518,12 @@
 }
 .form-field textarea { resize: vertical; }
 .form-field input:focus, .form-field textarea:focus, .form-field select:focus { border: 2px solid var(--md-sys-color-primary); padding: 11px 14px; }
+.tag-input { min-height: 52px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 6px 10px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); background: transparent; cursor: text; }
+.tag-input:focus-within { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
+.form-field .tag-input input:not([type='range']):not([type='color']), .form-field .tag-input input:focus { width: 140px; min-width: 100px; min-height: 34px; flex: 1 1 120px; padding: 5px 2px; border: 0; outline: 0; background: transparent; }
+.tag-input-chip, .gallery-detail-tags span { display: inline-flex; align-items: center; gap: 3px; padding: 5px 10px; border-radius: 999px; color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container); font-size: .78rem; font-weight: 700; }
+.tag-input-chip button { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; font: inherit; line-height: 1; cursor: pointer; }
+.tag-input-chip button:hover { background: color-mix(in srgb, var(--md-sys-color-on-primary-container) 12%, transparent); }
 .form-field input[type='range'], .range-input { display: block; width: 100%; height: 24px; margin: 0; accent-color: var(--md-sys-color-primary); }
 .select-field { position: relative; align-content: start; }
 .select-trigger { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); color: var(--md-sys-color-on-surface); background: transparent; text-align: left; font-weight: 400; cursor: pointer; }

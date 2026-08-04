@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { DragHandleIcon, EditIcon, ImageIcon, TrashIcon, UploadIcon } from '../../components/Icons.js';
 import { ImageDropField } from '../../components/ImageDropField.js';
 import { SortableGalleryImageQueue } from '../../components/SortableGalleryImageQueue.js';
+import { TagInput } from '../../components/TagInput.js';
 import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
@@ -64,6 +65,7 @@ export function GalleryPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(uncategorizedCategory);
+  const [tags, setTags] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [cardFocus, setCardFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
@@ -79,6 +81,7 @@ export function GalleryPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editCategory, setEditCategory] = useState(uncategorizedCategory);
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [editCardFocus, setEditCardFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [editCardAspectRatio, setEditCardAspectRatio] = useState<ThumbnailAspectRatio>('4:3');
   const [editThumbnailFocus, setEditThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
@@ -215,9 +218,9 @@ export function GalleryPage() {
     if (!file) { setError('请选择要上传的图片'); return; }
     setBusy(true); setError(''); setMessage('');
     try {
-      const item = await api.uploadGalleryItem({ title, description, category, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken);
+      const item = await api.uploadGalleryItem({ title, description, category, tags, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken);
       setItems((current) => [item, ...current]);
-      setTitle(''); setDescription(''); setCategory(uncategorizedCategory); setFile(null); setCardFocus({ x: 0.5, y: 0.5, size: 1 }); setCardAspectRatio('original'); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 }); setThumbnailAspectRatio('1:1'); setCropPositioning('center');
+      setTitle(''); setDescription(''); setCategory(uncategorizedCategory); setTags([]); setFile(null); setCardFocus({ x: 0.5, y: 0.5, size: 1 }); setCardAspectRatio('original'); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 }); setThumbnailAspectRatio('1:1'); setCropPositioning('center');
       setMessage('图片已上传并发布到首页画廊。');
     } catch (cause) {
       setError((cause as Error).message);
@@ -245,6 +248,7 @@ export function GalleryPage() {
     setEditTitle(item.title);
     setEditDescription(item.description);
     setEditCategory(item.category);
+    setEditTags(item.tags);
     setEditImages(item.images);
     setEditCardFocus(item.cardFocus);
     setEditCardAspectRatio(item.cardAspectRatio);
@@ -263,6 +267,7 @@ export function GalleryPage() {
         title: editTitle,
         description: editDescription,
         category: editCategory,
+        tags: editTags,
         coverImageId: editImages[0]?.mediaId,
         imageOrder: editImages.map((image) => image.mediaId),
         cardFocus: editCardFocus,
@@ -445,6 +450,7 @@ export function GalleryPage() {
       <div className="gallery-upload-fields">
         <label className="form-field"><span>标题</span><input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} required /></label>
         <label className="form-field"><span>多级分类</span><input value={category} maxLength={131} onChange={(event) => setCategory(event.target.value)} placeholder="例如：作品 / 插画 / 人物" /><small>使用 / 分隔层级，最多 4 级</small></label>
+        <div className="form-field"><span>标签</span><TagInput value={tags} onChange={setTags} /><small>按回车或逗号添加，最多 12 个标签</small></div>
         <label className="form-field"><span>说明</span><textarea rows={2} value={description} maxLength={240} onChange={(event) => setDescription(event.target.value)} /></label>
         <div className="gallery-upload-submit-row">
           <button className="button primary-button" disabled={busy || savingOrder}>{busy ? '正在上传…' : '上传到画廊'}</button>
@@ -518,6 +524,7 @@ export function GalleryPage() {
       <div className="dialog-form">
         <label className="form-field"><span>标题</span><input value={editTitle} maxLength={120} onChange={(event) => setEditTitle(event.target.value)} required /></label>
         <label className="form-field"><span>多级分类</span><input value={editCategory} maxLength={131} onChange={(event) => setEditCategory(event.target.value)} placeholder="例如：作品 / 插画 / 人物" /><small>使用 / 分隔层级，最多 4 级</small></label>
+        <div className="form-field"><span>标签</span><TagInput value={editTags} onChange={setEditTags} disabled={savingEdit} /><small>按回车或逗号添加，最多 12 个标签</small></div>
         <label className="form-field"><span>说明</span><textarea rows={3} value={editDescription} maxLength={240} onChange={(event) => setEditDescription(event.target.value)} /></label>
         {editing && editImages.length > 1 && <fieldset className="gallery-cover-fieldset"><legend>图片顺序</legend><p>拖动图片右下角的手柄调整顺序；第一张同时作为卡片和侧栏缩略图。</p><SortableGalleryImageQueue items={editImages.map((image) => ({ id: image.mediaId, imageUrl: image.url, name: image.originalFilename }))} onReorder={(ids) => setEditImages((current) => {
           const byId = new Map(current.map((image) => [image.mediaId, image]));

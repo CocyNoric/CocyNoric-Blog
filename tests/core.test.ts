@@ -583,6 +583,7 @@ test('stores multiple gallery images as one item and derives the selected cover'
     title: '组合画廊',
     description: '三张图片，一个展示单位',
     category: '作品 / 组合',
+    tags: ['插画', '夏日', '插画'],
     images: temporaryPaths.map((temporaryPath, index) => ({
       temporaryPath,
       originalFilename: index === 2 ? 'group-two.png' : path.basename(temporaryPath),
@@ -593,6 +594,7 @@ test('stores multiple gallery images as one item and derives the selected cover'
   });
 
   assert.equal(item.images.length, 3);
+  assert.deepEqual(item.tags, ['插画', '夏日']);
   assert.equal(item.coverImageId, '0002');
   assert.equal(item.url, item.images[1]?.url);
   assert.equal(item.originalFilename, item.images[1]?.originalFilename);
@@ -736,8 +738,8 @@ test('updates gallery metadata without changing media fields', async () => {
     height: 1,
   });
 
-  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', category: '作品 / 插画 / 人物', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
-  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', category: '作品/插画/人物', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', category: '作品 / 插画 / 人物', tags: ['人物', '蓝色', '人物'], cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', category: '作品/插画/人物', tags: ['人物', '蓝色'], cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
   assert.equal((await dataStore.getGalleryItem(item.id))?.url, item.url);
   assert.equal((await dataStore.getGalleryItem(item.id))?.originalFilename, '原图.png');
   await dataStore.deleteGalleryItem(item.id);
