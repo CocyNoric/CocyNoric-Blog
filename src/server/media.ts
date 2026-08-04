@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { lstat, rename, stat, unlink } from 'node:fs/promises';
+import { copyFile, lstat, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Busboy from 'busboy';
@@ -21,7 +21,10 @@ type ImageUploadOptions = {
   preserveOriginal?: boolean;
   domain?: 'general' | 'markdown';
   maximumBytes?: number;
+  variant?: ImageVariant;
 };
+
+type ImageVariant = 'default' | 'avatar' | 'icon' | 'background';
 
 function imageLimitMessage(maximumBytes: number) {
   return `图片不能超过 ${maximumBytes / 1024 / 1024} MB`;
@@ -31,7 +34,7 @@ export function uploadError(message: string, status = 400) {
   return Object.assign(new Error(message), { status });
 }
 
-export async function processImageFile(temporaryPath: string, domain: 'general' | 'markdown' = 'general') {
+export async function processImageFile(temporaryPath: string, domain: 'general' | 'markdown' = 'general', variant: ImageVariant = 'default') {
   const size = (await stat(temporaryPath)).size;
   if (size > config.uploadLimit) throw uploadError('图片不能超过 20 MB', 413);
 
@@ -39,17 +42,24 @@ export async function processImageFile(temporaryPath: string, domain: 'general' 
   const extension = type ? supported.get(type.mime) : undefined;
   if (!extension) throw uploadError('仅支持 PNG、JPEG 或 WebP 图片');
 
-  const compress = size > config.compressionThreshold;
-  const filename = `${randomUUID()}.${compress ? 'webp' : extension}`;
+  const transform = variant !== 'default' || size > config.compressionThreshold;
+  const outputExtension = variant === 'icon' ? 'png' : 'webp';
+  const filename = `${randomUUID()}.${transform ? outputExtension : extension}`;
   const directory = domain === 'markdown' ? dataStore.paths.markdownMedia : dataStore.paths.media;
   const destination = path.join(directory, filename);
 
-  if (compress) {
+  if (transform) {
     try {
-      await sharp(temporaryPath)
-        .keepMetadata()
-        .webp({ quality: 82, effort: 4 })
-        .toFile(destination);
+      if (variant === 'default') {
+        await sharp(temporaryPath).keepMetadata().webp({ quality: 82, effort: 4 }).toFile(destination);
+      } else {
+        let pipeline = sharp(temporaryPath).rotate();
+        if (variant === 'avatar') pipeline = pipeline.resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true });
+        if (variant === 'icon') pipeline = pipeline.resize({ width: 256, height: 256, fit: 'inside', withoutEnlargement: true });
+        if (variant === 'background') pipeline = pipeline.resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true });
+        if (variant === 'icon') await pipeline.png({ compressionLevel: 9 }).toFile(destination);
+        else await pipeline.webp({ quality: variant === 'avatar' ? 84 : 82, effort: 4, smartSubsample: true }).toFile(destination);
+      }
     } catch (error) {
       await unlink(destination).catch(() => undefined);
       throw error;
@@ -104,7 +114,7 @@ async function inspectGalleryImage(temporaryPath: string, originalFilename: stri
 export function receiveImage(req: Request, options: ImageUploadOptions & { preserveOriginal: true }): Promise<ReceivedImage>;
 export function receiveImage(req: Request, options?: ImageUploadOptions): Promise<StoredImage>;
 export async function receiveImage(req: Request, options?: ImageUploadOptions) {
-  const { fieldLimit = 2, preserveOriginal = false, domain = 'general', maximumBytes = config.uploadLimit } = options ?? {};
+  const { fieldLimit = 2, preserveOriginal = false, domain = 'general', maximumBytes = config.uploadLimit, variant = 'default' } = options ?? {};
   return new Promise<StoredImage | ReceivedImage>((resolve, reject) => {
     let settled = false;
     let temporaryPath: string | null = null;
@@ -175,7 +185,7 @@ export async function receiveImage(req: Request, options?: ImageUploadOptions) {
           resolve({ temporaryPath: savedTemporaryPath, originalFilename, fields, ...inspected });
           return;
         }
-        const result = await processImageFile(temporaryPath, domain);
+        const result = await processImageFile(temporaryPath, domain, variant);
         temporaryPath = null;
         settled = true;
         resolve({ ...result, fields });
@@ -185,6 +195,70 @@ export async function receiveImage(req: Request, options?: ImageUploadOptions) {
     });
     req.pipe(busboy);
   });
+}
+
+function storedMediaPath(url: string | null) {
+  if (!url?.startsWith('/media/')) return null;
+  try {
+    const filename = decodeURIComponent(url.slice('/media/'.length));
+    if (!filename || path.basename(filename) !== filename) return null;
+    return path.join(dataStore.paths.media, filename);
+  } catch {
+    return null;
+  }
+}
+
+async function settingMediaNeedsOptimization(filePath: string, variant: Exclude<ImageVariant, 'default'>) {
+  try {
+    const metadata = await sharp(filePath).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    if (variant === 'icon') return metadata.format !== 'png' || width > 256 || height > 256;
+    if (variant === 'avatar') return metadata.format !== 'webp' || width > 512 || height > 512;
+    return metadata.format !== 'webp' || width > 2560 || height > 2560;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+export async function optimizeStoredSettingMedia() {
+  const current = await dataStore.readSettings();
+  let next = current;
+  const createdFiles: string[] = [];
+  const candidates: Array<{
+    url: string | null;
+    variant: Exclude<ImageVariant, 'default'>;
+    apply: (url: string) => void;
+  }> = [
+    { url: current.profileAvatar, variant: 'avatar', apply: (url) => { next = { ...next, profileAvatar: url }; } },
+    { url: current.webIcon, variant: 'icon', apply: (url) => { next = { ...next, webIcon: url }; } },
+    { url: current.backgroundImage, variant: 'background', apply: (url) => { next = { ...next, backgroundImage: url }; } },
+    { url: current.repositoryAppearance.backgroundImage, variant: 'background', apply: (url) => { next = { ...next, repositoryAppearance: { ...next.repositoryAppearance, backgroundImage: url } }; } },
+  ];
+
+  for (const candidate of candidates) {
+    const source = storedMediaPath(candidate.url);
+    if (!source || !(await settingMediaNeedsOptimization(source, candidate.variant))) continue;
+    const temporary = path.join(dataStore.paths.tmp, `${randomUUID()}.setting-media`);
+    try {
+      await copyFile(source, temporary);
+      const optimized = await processImageFile(temporary, 'general', candidate.variant);
+      createdFiles.push(optimized.filePath);
+      candidate.apply(optimized.url);
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      console.warn(`无法优化站点媒体 ${candidate.url}:`, error);
+    }
+  }
+
+  if (next === current) return;
+  try {
+    await dataStore.writeSettings(next);
+  } catch (error) {
+    await Promise.all(createdFiles.map((filePath) => unlink(filePath).catch(() => undefined)));
+    throw error;
+  }
 }
 
 export async function receiveGalleryImages(req: Request, options: { maximumFiles?: number; maximumBytes?: number; fieldLimit?: number } = {}): Promise<ReceivedGalleryBatch> {

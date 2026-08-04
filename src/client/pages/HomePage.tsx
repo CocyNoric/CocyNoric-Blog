@@ -18,18 +18,15 @@ export function HomePage() {
   }, [settings.siteName]);
 
   useEffect(() => {
-    if (settingsLoading) return;
     let active = true;
     setLoading(true);
     setError('');
-    const postsRequest = settings.contentVisibility.articles ? api.posts() : Promise.resolve([]);
-    const galleryRequest = settings.contentVisibility.gallery ? api.gallery() : Promise.resolve([]);
-    void Promise.all([postsRequest, galleryRequest])
-      .then(([nextPosts, items]) => { if (active) { setPosts(nextPosts); setGallery(items); } })
+    void api.home()
+      .then((payload) => { if (active) { setPosts(payload.posts); setGallery(payload.gallery); } })
       .catch((cause: Error) => { if (active) setError(cause.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [settings.contentVisibility.articles, settings.contentVisibility.gallery, settingsLoading]);
+  }, []);
 
   return <div className="public-page">
     <main id="main" className="page-shell home-shell">

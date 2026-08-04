@@ -420,9 +420,12 @@ export function GalleryPage() {
     focusHandle(item.id);
   };
 
-  const pointerOrder = pointerPreview
+  const pointerOrder = useMemo(() => pointerPreview
     ? moveIntoVisualSlot(items, pointerPreview.id, pointerPreview.slotIndex)
-    : items;
+    : items, [items, pointerPreview]);
+  const pointerOrderIndexes = useMemo(() => new Map(pointerOrder.map((item, index) => [item.id, index])), [pointerOrder]);
+  const tagsByItem = useMemo(() => new Map(items.map((item) => [item.id, galleryTagsForItem(item)])), [items]);
+  const galleryImageCount = useMemo(() => items.reduce((total, item) => total + item.images.length, 0), [items]);
   const tagSuggestions = useMemo(() => summarizeGalleryTags(items).map((summary) => summary.tag), [items]);
 
   return <main id="main" className="page-shell admin-shell gallery-admin-shell">
@@ -458,13 +461,14 @@ export function GalleryPage() {
     </form>
 
     <section className="gallery-admin-list" aria-labelledby="gallery-list-heading">
-      <div className="section-heading"><div><p className="eyebrow">已发布</p><h2 id="gallery-list-heading">展示单位</h2><p className="gallery-order-help">拖动左上角手柄调整展示顺序。{savingOrder && ' 正在保存排序…'}</p></div><p className="section-description">共 {items.length} 个展示单位 · {items.reduce((total, item) => total + item.images.length, 0)} 张图片</p></div>
+      <div className="section-heading"><div><p className="eyebrow">已发布</p><h2 id="gallery-list-heading">展示单位</h2><p className="gallery-order-help">拖动左上角手柄调整展示顺序。{savingOrder && ' 正在保存排序…'}</p></div><p className="section-description">共 {items.length} 个展示单位 · {galleryImageCount} 张图片</p></div>
       <p className="visually-hidden" id="gallery-order-instructions">按空格或回车抓取图片，方向键移动，Home 或 End 移到首尾，Escape 取消。</p>
       <div className="visually-hidden" aria-live="polite">{liveMessage}</div>
       {items.length === 0
         ? <div className="gallery-empty">还没有图片，使用上方入口上传第一张。</div>
         : <div className={`gallery-grid gallery-order-grid${pointerPreview ? ' is-sorting' : ''}`} ref={gridRef} aria-busy={savingOrder}>{items.map((entry) => {
-          const index = pointerOrder.findIndex((item) => item.id === entry.id);
+          const index = pointerOrderIndexes.get(entry.id) ?? 0;
+          const entryTags = tagsByItem.get(entry.id) ?? [];
           return <article className={`gallery-admin-card${activeDragId === entry.id ? ' is-pointer-placeholder' : ''}${keyboardDragId === entry.id ? ' is-keyboard-dragging' : ''}`} data-gallery-id={entry.id} key={entry.id} style={{ order: index }}>
           <button
             className="gallery-order-handle"
@@ -480,8 +484,8 @@ export function GalleryPage() {
             onLostPointerCapture={(event) => finishPointerDrag(event, true)}
             onKeyDown={(event) => handleKeyboardOrder(event, entry)}
           ><DragHandleIcon /></button>
-          <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} />{entry.images.length > 1 && <span className="gallery-image-count">{entry.images.length} 张</span>}</div>
-          <div className="gallery-admin-copy">{galleryTagsForItem(entry).length > 0 && <div className="gallery-admin-tags" aria-label="标签">{galleryTagsForItem(entry).slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
+          <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} loading="lazy" focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} />{entry.images.length > 1 && <span className="gallery-image-count">{entry.images.length} 张</span>}</div>
+          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
           <div className="gallery-card-actions">
             <button className="icon-button" type="button" disabled={savingOrder} onClick={() => beginEdit(entry)} aria-label={`编辑${entry.title}`}><EditIcon /></button>
             <button className="icon-button danger" type="button" disabled={savingOrder} onClick={() => setPendingDelete(entry)} aria-label={`删除${entry.title}`}><TrashIcon /></button>
@@ -490,9 +494,10 @@ export function GalleryPage() {
         })}</div>}
       {pointerPreview && (() => {
         const item = items.find((candidate) => candidate.id === pointerPreview.id);
+        const itemTags = item ? tagsByItem.get(item.id) ?? [] : [];
         return item ? <article ref={overlayRef} aria-hidden="true" className="gallery-sort-overlay" style={{ width: pointerPreview.source.width }}>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(item)) }}><GalleryCropImage src={item.url} alt="" focus={item.cardFocus} aspectRatio={item.cardAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} /></div>
-          <div className="gallery-admin-copy">{galleryTagsForItem(item).length > 0 && <div className="gallery-admin-tags" aria-label="标签">{galleryTagsForItem(item).slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
+          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
         </article> : null;
       })()}
     </section>

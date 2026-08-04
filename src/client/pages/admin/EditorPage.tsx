@@ -1,4 +1,5 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from 'react';
+import 'katex/dist/katex.min.css';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PostInput } from '../../../shared/schemas.js';
 import { api } from '../../api.js';

@@ -98,7 +98,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    const next = await api.settings();
+    const next = window.location.pathname === '/'
+      ? (await api.home()).settings
+      : await api.settings();
     setSettings(next);
   };
 

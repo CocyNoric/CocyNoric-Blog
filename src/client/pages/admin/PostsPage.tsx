@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { AdminPost } from '../../../shared/types.js';
+import type { PostSummary } from '../../../shared/types.js';
 import { categoryDisplayName } from '../../../shared/categories.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
@@ -11,8 +11,8 @@ import { useAuth } from '../../hooks/useAuth.js';
 
 export function PostsPage() {
   const { csrfToken } = useAuth();
-  const [posts, setPosts] = useState<AdminPost[]>([]);
-  const [pendingDelete, setPendingDelete] = useState<AdminPost | null>(null);
+  const [posts, setPosts] = useState<PostSummary[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<PostSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 

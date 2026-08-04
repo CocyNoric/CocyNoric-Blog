@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import 'katex/dist/katex.min.css';
 import { Link, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary, PublicPost } from '../../shared/types.js';
@@ -20,18 +21,17 @@ export function PostPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const controller = new AbortController();
     window.scrollTo(0, 0);
     setPost(null); setError(''); setSupplementalError('');
     setRecentPosts(undefined); setGalleryItems(undefined);
-    void api.post(slug).then((value) => {
-      setPost(value);
-      document.title = `${value.title} · ${settings.siteName}`;
-    }).catch((cause: Error) => setError(cause.message));
-
-    const requests: Promise<unknown>[] = [];
-    if (config.showRecentPosts) requests.push(api.posts().then((posts) => setRecentPosts(posts.filter((candidate) => candidate.slug !== slug).slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
-    if (config.showRecentGallery && settings.contentVisibility.gallery) requests.push(api.gallery().then((items) => setGalleryItems(items.slice(0, config.recentGalleryLimit))).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
-    void Promise.all(requests);
+    void api.postContext(slug, controller.signal).then((payload) => {
+      setPost(payload.post);
+      setRecentPosts(payload.recentPosts);
+      setGalleryItems(payload.galleryItems);
+      document.title = `${payload.post.title} · ${settings.siteName}`;
+    }).catch((cause: Error) => { if (!controller.signal.aborted) setError(cause.message); });
+    return () => controller.abort();
   }, [slug, settings.siteName, settings.contentVisibility.gallery, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell"><div className="empty-state"><h1>文章未找到</h1><p>{error}</p><Link className="button primary-button" to="/articles">返回文章列表</Link></div></main>;

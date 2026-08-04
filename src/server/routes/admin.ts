@@ -109,7 +109,7 @@ adminRouter.delete('/repository/code-tools/:id', requireWriteProtection, async (
 
 adminRouter.get('/posts', async (_req, res, next) => {
   try {
-    res.json(await dataStore.listPosts(true));
+    res.json((await dataStore.listPosts(true)).map(({ markdown: _markdown, version: _version, ...post }) => post));
   } catch (error) {
     next(error);
   }
@@ -305,7 +305,8 @@ adminRouter.post('/settings/media/:kind', requireWriteProtection, async (req, re
       res.status(400).json({ error: '媒体类型无效' });
       return;
     }
-    const upload = await receiveImage(req);
+    const variant = kind === 'profileAvatar' ? 'avatar' : kind === 'webIcon' ? 'icon' : 'background';
+    const upload = await receiveImage(req, { variant });
     const current = await dataStore.readSettings();
     const nextSettings = key === 'repositoryAppearance.backgroundImage'
       ? { ...current, repositoryAppearance: { ...current.repositoryAppearance, backgroundImage: upload.url } }

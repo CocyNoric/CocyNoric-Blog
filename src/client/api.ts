@@ -1,4 +1,4 @@
-import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview } from '../shared/types.js';
+import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, GalleryPagePayload, HomePayload, PostPagePayload, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview } from '../shared/types.js';
 import type { GalleryInput, GalleryItem, PostInput, SiteSettings } from '../shared/schemas.js';
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -55,15 +55,30 @@ function appendGalleryFields(body: FormData, input: GalleryInput) {
   body.append('cropPositioning', input.cropPositioning ?? 'center');
 }
 
+let pendingHomeRequest: Promise<HomePayload> | null = null;
+
+function homeRequest() {
+  if (!pendingHomeRequest) {
+    const pending = request<HomePayload>('/api/home');
+    pendingHomeRequest = pending;
+    const clear = () => { if (pendingHomeRequest === pending) pendingHomeRequest = null; };
+    void pending.then(clear, clear);
+  }
+  return pendingHomeRequest;
+}
+
 export const api = {
   settings: () => request<PublicSettings>('/api/settings'),
+  home: homeRequest,
   repositoryOverview: () => request<RepositoryOverview>('/api/repository'),
   repositoryTree: (area: RepositoryAreaKey, pathname = '') => request<RepositoryListing>(`/api/repository/tree/${area}${pathname ? `?path=${encodeURIComponent(pathname)}` : ''}`),
   gallery: (query = '') => request<GalleryItem[]>(`/api/gallery${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   galleryItem: (id: string) => request<GalleryItem>(`/api/gallery/${encodeURIComponent(id)}`),
+  galleryContext: (id: string, signal?: AbortSignal) => request<GalleryPagePayload>(`/api/gallery/${encodeURIComponent(id)}/context`, { signal }),
   repositoryCodeTools: () => request<PublicCodeTool[]>('/api/repository/code-tools'),
   posts: (query = '') => request<PostSummary[]>(`/api/posts${query}`),
   post: (slug: string) => request<PublicPost>(`/api/posts/${encodeURIComponent(slug)}`),
+  postContext: (slug: string, signal?: AbortSignal) => request<PostPagePayload>(`/api/posts/${encodeURIComponent(slug)}/context`, { signal }),
   authState: () => request<AuthState>('/api/auth/me'),
   login: (password: string) => request<AuthState>('/api/auth/login', {
     method: 'POST',
@@ -73,7 +88,7 @@ export const api = {
     method: 'POST',
     headers: writeHeaders(csrfToken),
   }),
-  adminPosts: () => request<AdminPost[]>('/api/admin/posts'),
+  adminPosts: () => request<PostSummary[]>('/api/admin/posts'),
   adminCodeTools: () => request<PublicCodeTool[]>('/api/admin/repository/code-tools'),
   adminCodeToolProjects: () => request<CodeToolAdminProject[]>('/api/admin/repository/code-tools/projects'),
   adminCodeToolProject: (slug: string, pathname = '') => request<CodeToolProjectListing>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}${pathname ? `?path=${encodeURIComponent(pathname)}` : ''}`),

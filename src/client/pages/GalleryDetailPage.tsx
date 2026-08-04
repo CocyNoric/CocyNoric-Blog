@@ -22,26 +22,19 @@ export function GalleryDetailPage() {
   const [showAllImages, setShowAllImages] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
     window.scrollTo(0, 0);
     setShowAllImages(false);
     setItem(null); setError(''); setSupplementalError('');
     setRecentPosts(undefined); setGalleryItems(undefined);
-    void api.galleryItem(id).then((value) => {
-      setItem(value);
-      if (value.id !== id) navigate(`/gallery/${value.id}`, { replace: true });
-      document.title = `${value.title} · ${settings.siteName}`;
-    }).catch((cause: Error) => setError(cause.message));
-
-    const requests: Promise<unknown>[] = [];
-    if (config.showRecentPosts && settings.contentVisibility.articles) requests.push(api.posts().then((posts) => setRecentPosts(posts.slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
-    if (config.showRecentGallery) requests.push(api.gallery().then((gallery) => {
-      const selected = gallery.find((candidate) => candidate.id === id);
-      const visible = gallery.slice(0, config.recentGalleryLimit);
-      setGalleryItems(selected && !visible.some((candidate) => candidate.id === selected.id)
-        ? [...visible.slice(0, Math.max(0, config.recentGalleryLimit - 1)), selected]
-        : visible);
-    }).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
-    void Promise.all(requests);
+    void api.galleryContext(id, controller.signal).then((payload) => {
+      setItem(payload.item);
+      setRecentPosts(payload.recentPosts);
+      setGalleryItems(payload.galleryItems);
+      if (payload.item.id !== id) navigate(`/gallery/${payload.item.id}`, { replace: true });
+      document.title = `${payload.item.title} · ${settings.siteName}`;
+    }).catch((cause: Error) => { if (!controller.signal.aborted) setError(cause.message); });
+    return () => controller.abort();
   }, [id, navigate, settings.siteName, settings.contentVisibility.articles, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell listing-shell"><div className="empty-state"><h1>画廊展示未找到</h1><p>{error}</p><Link className="button primary-button" to="/gallery">返回画廊</Link></div></main>;

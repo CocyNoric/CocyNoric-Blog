@@ -1,21 +1,31 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { SiteFooter } from './components/SiteFooter.js';
 import { SiteHeader } from './components/SiteHeader.js';
-import { useAuth } from './hooks/useAuth.js';
-import { HomePage } from './pages/HomePage.js';
-import { ArticlesPage } from './pages/ArticlesPage.js';
-import { PostPage } from './pages/PostPage.js';
-import { PublicGalleryPage } from './pages/PublicGalleryPage.js';
-import { RepositoryPage } from './pages/RepositoryPage.js';
-import { GalleryDetailPage } from './pages/GalleryDetailPage.js';
-import { LoginPage } from './pages/admin/LoginPage.js';
-import { PostsPage } from './pages/admin/PostsPage.js';
-import { EditorPage } from './pages/admin/EditorPage.js';
-import { GalleryPage } from './pages/admin/GalleryPage.js';
-import { AdvancedGalleryUploadPage } from './pages/admin/AdvancedGalleryUploadPage.js';
-import { AdminRepositoryPage } from './pages/admin/RepositoryPage.js';
+import { AuthProvider, useAuth } from './hooks/useAuth.js';
 import { useSettings } from './hooks/useSettings.js';
-import { SettingsPage } from './pages/admin/SettingsPage.js';
+
+const HomePage = lazy(() => import('./pages/HomePage.js').then((module) => ({ default: module.HomePage })));
+const ArticlesPage = lazy(() => import('./pages/ArticlesPage.js').then((module) => ({ default: module.ArticlesPage })));
+const PostPage = lazy(() => import('./pages/PostPage.js').then((module) => ({ default: module.PostPage })));
+const PublicGalleryPage = lazy(() => import('./pages/PublicGalleryPage.js').then((module) => ({ default: module.PublicGalleryPage })));
+const RepositoryPage = lazy(() => import('./pages/RepositoryPage.js').then((module) => ({ default: module.RepositoryPage })));
+const GalleryDetailPage = lazy(() => import('./pages/GalleryDetailPage.js').then((module) => ({ default: module.GalleryDetailPage })));
+const LoginPage = lazy(() => import('./pages/admin/LoginPage.js').then((module) => ({ default: module.LoginPage })));
+const PostsPage = lazy(() => import('./pages/admin/PostsPage.js').then((module) => ({ default: module.PostsPage })));
+const EditorPage = lazy(() => import('./pages/admin/EditorPage.js').then((module) => ({ default: module.EditorPage })));
+const GalleryPage = lazy(() => import('./pages/admin/GalleryPage.js').then((module) => ({ default: module.GalleryPage })));
+const AdvancedGalleryUploadPage = lazy(() => import('./pages/admin/AdvancedGalleryUploadPage.js').then((module) => ({ default: module.AdvancedGalleryUploadPage })));
+const AdminRepositoryPage = lazy(() => import('./pages/admin/RepositoryPage.js').then((module) => ({ default: module.AdminRepositoryPage })));
+const SettingsPage = lazy(() => import('./pages/admin/SettingsPage.js').then((module) => ({ default: module.SettingsPage })));
+
+function RouteBoundary() {
+  return <Suspense fallback={<main id="main" className="page-shell"><p className="loading-state">正在载入页面…</p></main>}><Outlet /></Suspense>;
+}
+
+function AdminAuthLayout() {
+  return <AuthProvider><Outlet /></AuthProvider>;
+}
 
 function ProtectedRoute() {
   const { loading, authenticated } = useAuth();
@@ -53,30 +63,34 @@ function PublicLayout() {
 export function App() {
   return <Routes>
     <Route element={<PublicLayout />}>
-      <Route index element={<HomePage />} />
-      <Route path="articles" element={<PublicArticlesRoute />} />
-      <Route element={<PublicFeatureRoute feature="articles" />}>
-        <Route path="posts/:slug" element={<PostPage />} />
+      <Route element={<RouteBoundary />}>
+        <Route index element={<HomePage />} />
+        <Route path="articles" element={<PublicArticlesRoute />} />
+        <Route element={<PublicFeatureRoute feature="articles" />}>
+          <Route path="posts/:slug" element={<PostPage />} />
+        </Route>
+        <Route element={<PublicFeatureRoute feature="gallery" />}>
+          <Route path="gallery" element={<PublicGalleryPage />} />
+          <Route path="gallery/:id" element={<GalleryDetailPage />} />
+        </Route>
+        <Route element={<PublicFeatureRoute feature="repository" />}>
+          <Route path="repository" element={<RepositoryPage />} />
+          <Route path="repository/:directory/*" element={<RepositoryPage />} />
+        </Route>
+        <Route element={<AdminAuthLayout />}>
+          <Route path="admin/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="admin/posts" element={<PostsPage />} />
+            <Route path="admin/posts/new" element={<EditorPage />} />
+            <Route path="admin/posts/:id" element={<EditorPage />} />
+            <Route path="admin/gallery" element={<GalleryPage />} />
+            <Route path="admin/gallery/upload" element={<AdvancedGalleryUploadPage />} />
+            <Route path="admin/repository" element={<AdminRepositoryPage />} />
+            <Route path="admin/settings" element={<SettingsPage />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-      <Route element={<PublicFeatureRoute feature="gallery" />}>
-        <Route path="gallery" element={<PublicGalleryPage />} />
-        <Route path="gallery/:id" element={<GalleryDetailPage />} />
-      </Route>
-      <Route element={<PublicFeatureRoute feature="repository" />}>
-        <Route path="repository" element={<RepositoryPage />} />
-        <Route path="repository/:directory/*" element={<RepositoryPage />} />
-      </Route>
-      <Route path="admin/login" element={<LoginPage />} />
-      <Route element={<ProtectedRoute />}>
-        <Route path="admin/posts" element={<PostsPage />} />
-        <Route path="admin/posts/new" element={<EditorPage />} />
-        <Route path="admin/posts/:id" element={<EditorPage />} />
-        <Route path="admin/gallery" element={<GalleryPage />} />
-        <Route path="admin/gallery/upload" element={<AdvancedGalleryUploadPage />} />
-        <Route path="admin/repository" element={<AdminRepositoryPage />} />
-        <Route path="admin/settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Routes>;
 }

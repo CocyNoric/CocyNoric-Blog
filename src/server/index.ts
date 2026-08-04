@@ -1,15 +1,17 @@
 import express, { type ErrorRequestHandler } from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import { ZodError } from 'zod';
 import { cleanExpiredSessions } from './auth.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
-import { serveGalleryMedia, serveMarkdownMedia, serveMedia } from './media.js';
+import { optimizeStoredSettingMedia, serveGalleryMedia, serveMarkdownMedia, serveMedia } from './media.js';
 import { adminRouter } from './routes/admin.js';
 import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/public.js';
 
 await dataStore.initialize();
+await optimizeStoredSettingMedia();
 await cleanExpiredSessions();
 setInterval(() => void cleanExpiredSessions(), 60 * 60 * 1000).unref();
 
@@ -30,6 +32,7 @@ app.use(helmet({
     },
   },
 }));
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/media/gallery/:id/:filename', (req, res, next) => {

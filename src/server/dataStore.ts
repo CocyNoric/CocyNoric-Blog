@@ -160,6 +160,12 @@ type LocatedPost = {
   markdownRelativePath: string;
 };
 
+type FileCache<T> = {
+  mtimeMs: number;
+  size: number;
+  value: T;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -215,6 +221,10 @@ export class DataStore {
   private postMutation = Promise.resolve();
   private codeToolsMutation = Promise.resolve();
   private initialization: Promise<void> | null = null;
+  private settingsCache: FileCache<SiteSettings> | null = null;
+  private galleryCache: FileCache<GalleryIndex> | null = null;
+  private postFileCache = new Map<string, FileCache<AdminPost>>();
+  private postsRead: Promise<LocatedPost[]> | null = null;
 
   constructor(dataDir = config.dataDir) {
     const repository = path.join(dataDir, 'repository');
@@ -260,10 +270,18 @@ export class DataStore {
   }
 
   async readSettings() {
+    let details = await stat(this.paths.settings);
+    if (this.settingsCache?.mtimeMs === details.mtimeMs && this.settingsCache.size === details.size) {
+      return structuredClone(this.settingsCache.value);
+    }
     const raw = JSON.parse(await readFile(this.paths.settings, 'utf8')) as unknown;
     const settings = migrateSettings(raw);
-    if (JSON.stringify(raw) !== JSON.stringify(settings)) await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
-    return settings;
+    if (JSON.stringify(raw) !== JSON.stringify(settings)) {
+      await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
+      details = await stat(this.paths.settings);
+    }
+    this.settingsCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(settings) };
+    return structuredClone(settings);
   }
 
   private mutateSettings<T>(mutation: () => Promise<T>) {
@@ -279,7 +297,9 @@ export class DataStore {
         : migrateSettings(defaultSettings);
       const settings = migrateSettings(mergeSettings(current, input));
       await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
-      return settings;
+      const details = await stat(this.paths.settings);
+      this.settingsCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(settings) };
+      return structuredClone(settings);
     });
   }
 
@@ -559,12 +579,21 @@ export class DataStore {
   }
 
   private async readGalleryIndex() {
+    const details = await stat(this.paths.gallery);
+    if (this.galleryCache?.mtimeMs === details.mtimeMs && this.galleryCache.size === details.size) {
+      return structuredClone(this.galleryCache.value);
+    }
     const value = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
-    return galleryIndexSchema.parse(value);
+    const index = galleryIndexSchema.parse(value);
+    this.galleryCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(index) };
+    return structuredClone(index);
   }
 
   private async writeGalleryIndex(index: GalleryIndex) {
-    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(galleryIndexSchema.parse(index), null, 2)}\n`);
+    const parsed = galleryIndexSchema.parse(index);
+    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(parsed, null, 2)}\n`);
+    const details = await stat(this.paths.gallery);
+    this.galleryCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(parsed) };
   }
 
   private mutateGallery<T>(mutation: () => Promise<T>) {
@@ -627,7 +656,11 @@ export class DataStore {
   private async writeGalleryDisplayFile(source: string, destination: string) {
     const temporary = `${destination}.${randomUUID()}.tmp`;
     try {
-      await sharp(source).keepMetadata().webp({ quality: 82, effort: 4 }).toFile(temporary);
+      await sharp(source)
+        .rotate()
+        .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82, effort: 4, smartSubsample: true })
+        .toFile(temporary);
       await rename(temporary, destination);
     } catch (error) {
       await unlink(temporary).catch(() => undefined);
@@ -637,6 +670,8 @@ export class DataStore {
 
   private async ensureGalleryDisplayFiles() {
     await this.mutateGallery(async () => {
+      const displayMigrationMarker = path.join(this.paths.galleryRoot, '.display-v2');
+      const refreshExisting = !(await this.exists(displayMigrationMarker));
       const raw = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
       const index = galleryIndexSchema.parse(raw);
       let changed = JSON.stringify(raw) !== JSON.stringify(index);
@@ -647,9 +682,19 @@ export class DataStore {
           const preferredDisplayFilename = item.images.length === 1
             ? this.galleryDisplayFilename(image.originalFilename)
             : `display-${image.mediaId}.webp`;
-          const displayFilename = image.displayFilename ?? this.uniqueGalleryFilename(preferredDisplayFilename, occupied);
-          const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
-          if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
+          let displayFilename = image.displayFilename ?? this.uniqueGalleryFilename(preferredDisplayFilename, occupied);
+          let display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+          let displayExists = await this.exists(display);
+          if (refreshExisting && displayExists) {
+            const currentIsV2 = /^display-v2(?:-|\.)/i.test(displayFilename);
+            if (!currentIsV2 || await this.galleryDisplayNeedsRefresh(display)) {
+              const migratedFilename = item.images.length === 1 ? 'display-v2.webp' : `display-v2-${image.mediaId}.webp`;
+              displayFilename = this.uniqueGalleryFilename(migratedFilename, occupied);
+              display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+              displayExists = await this.exists(display);
+            }
+          }
+          if (!displayExists) await this.writeGalleryDisplayFile(original, display);
           const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
           if (image.displayFilename !== displayFilename || image.url !== expectedUrl) {
             image.displayFilename = displayFilename;
@@ -676,7 +721,31 @@ export class DataStore {
         }
       }
       if (changed) await this.writeGalleryIndex(index);
+      if (refreshExisting) await this.atomicWrite(displayMigrationMarker, '1');
+      const cleanupMarker = path.join(this.paths.galleryRoot, '.display-v2-cleanup');
+      if (!(await this.exists(cleanupMarker)) && await this.cleanupUnreferencedGalleryDisplays(index)) {
+        await this.atomicWrite(cleanupMarker, '1');
+      }
     });
+  }
+
+  private async cleanupUnreferencedGalleryDisplays(index: GalleryIndex) {
+    let complete = true;
+    for (const item of index.items) {
+      const referenced = new Set(item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US')));
+      const directory = path.join(this.paths.galleryRoot, item.id);
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isFile() || !/^display(?:-.+)?\.webp$/i.test(entry.name) || referenced.has(entry.name.toLocaleLowerCase('en-US'))) continue;
+        try {
+          await unlink(path.join(directory, entry.name));
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== 'EBUSY' && code !== 'EPERM') throw error;
+          complete = false;
+        }
+      }
+    }
+    return complete;
   }
 
   private async addGalleryGroupUnlocked(input: GalleryMetadataInput & { images: GalleryImageUpload[]; coverIndex: number }) {
@@ -750,6 +819,16 @@ export class DataStore {
     }
   }
 
+  private async galleryDisplayNeedsRefresh(filePath: string) {
+    try {
+      const metadata = await sharp(filePath).metadata();
+      return metadata.format !== 'webp' || (metadata.width ?? 0) > 2560 || (metadata.height ?? 0) > 2560;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      throw error;
+    }
+  }
+
   async addGalleryItem(input: GalleryMetadataInput & GalleryImageUpload) {
     return this.mutateGallery(async () => {
       const { temporaryPath, originalFilename, width, height, ...metadata } = input;
@@ -815,37 +894,59 @@ export class DataStore {
   }
 
   private async articleMarkdownFiles(directory = this.paths.markdown, relativeDirectory = ''): Promise<string[]> {
-    const files: string[] = [];
     const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!relativeDirectory && (entry.name.startsWith('.') || entry.name === 'posts' || entry.name === 'media')) continue;
+    const files = await Promise.all(entries.map(async (entry): Promise<string[]> => {
+      if (!relativeDirectory && (entry.name.startsWith('.') || entry.name === 'posts' || entry.name === 'media')) return [];
       const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       const filePath = path.join(directory, entry.name);
-      if (entry.isDirectory()) files.push(...await this.articleMarkdownFiles(filePath, relativePath));
-      else if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) files.push(relativePath);
-    }
-    return files;
+      if (entry.isDirectory()) return this.articleMarkdownFiles(filePath, relativePath);
+      if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) return [relativePath];
+      return [];
+    }));
+    return files.flat();
   }
 
-  private async locatedPosts(): Promise<LocatedPost[]> {
-    const located: LocatedPost[] = [];
-    for (const relativePath of await this.articleMarkdownFiles()) {
+  private async readLocatedPosts(): Promise<LocatedPost[]> {
+    const relativePaths = await this.articleMarkdownFiles();
+    const activeFiles = new Set(relativePaths.map((relativePath) => path.join(this.paths.markdown, ...relativePath.split('/'))));
+    const located = await Promise.all(relativePaths.map(async (relativePath): Promise<LocatedPost | null> => {
       const [projectName, ...projectPath] = relativePath.split('/');
-      if (!projectName || !projectPath.length) continue;
+      if (!projectName || !projectPath.length) return null;
       const filePath = path.join(this.paths.markdown, ...relativePath.split('/'));
       try {
-        located.push({
-          post: await this.readPostFile(filePath),
+        const details = await stat(filePath);
+        const cached = this.postFileCache.get(filePath);
+        const post = cached?.mtimeMs === details.mtimeMs && cached.size === details.size
+          ? cached.value
+          : await this.readPostFile(filePath);
+        if (post !== cached?.value) this.postFileCache.set(filePath, { mtimeMs: details.mtimeMs, size: details.size, value: post });
+        return {
+          post,
           filePath,
           projectRoot: path.join(this.paths.markdown, projectName),
           projectName,
           markdownRelativePath: projectPath.join('/'),
-        });
+        };
       } catch (error) {
         console.error(`无法读取文章 ${relativePath}:`, error);
+        return null;
       }
+    }));
+    for (const filePath of this.postFileCache.keys()) {
+      if (!activeFiles.has(filePath)) this.postFileCache.delete(filePath);
     }
-    return located;
+    return located.filter((entry): entry is LocatedPost => entry !== null);
+  }
+
+  private async locatedPosts(): Promise<LocatedPost[]> {
+    if (this.postsRead) return this.postsRead;
+    const pending = this.readLocatedPosts();
+    this.postsRead = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.postsRead === pending) this.postsRead = null;
+    }
   }
 
   private async locatePostById(id: string) {
@@ -943,6 +1044,7 @@ export class DataStore {
           await rename(asset.temporaryPath, destination);
         }
         await this.atomicWrite(target, source);
+        this.postFileCache.delete(target);
         return this.readPostFile(target);
       } catch (error) {
         if (isNew) await rm(projectRoot, { recursive: true, force: true }).catch(() => undefined);
@@ -1003,6 +1105,9 @@ export class DataStore {
       const located = await this.locatePostById(id);
       if (!located) return false;
       await rm(located.projectRoot, { recursive: true, force: true });
+      for (const filePath of this.postFileCache.keys()) {
+        if (filePath === located.projectRoot || filePath.startsWith(`${located.projectRoot}${path.sep}`)) this.postFileCache.delete(filePath);
+      }
       return true;
     });
   }
@@ -1029,7 +1134,7 @@ export class DataStore {
 
   private async exists(filePath: string) {
     try {
-      await readFile(filePath);
+      await lstat(filePath);
       return true;
     } catch (error) {
       return (error as NodeJS.ErrnoException).code !== 'ENOENT' ? Promise.reject(error) : false;

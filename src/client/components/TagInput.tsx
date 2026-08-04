@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 
 type TagInputProps = {
   value: string[];
@@ -29,13 +29,20 @@ export function TagInput({ value, onChange, disabled = false, maximum = 12, plac
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
-  const selectedKeys = new Set(value.map((tag) => tag.toLocaleLowerCase('zh-CN')));
+  const selectedKeys = useMemo(() => new Set(value.map((tag) => tag.toLocaleLowerCase('zh-CN'))), [value]);
+  const normalizedSuggestions = useMemo(
+    () => normalizedTags([...suggestions], Math.max(suggestions.length, maximum)),
+    [suggestions, maximum],
+  );
   const draftKey = draft.trim().toLocaleLowerCase('zh-CN');
-  const available = normalizedTags([...suggestions], Math.max(suggestions.length, maximum))
+  const available = useMemo(() => normalizedSuggestions
     .filter((tag) => !selectedKeys.has(tag.toLocaleLowerCase('zh-CN')))
     .filter((tag) => !draftKey || tag.toLocaleLowerCase('zh-CN').includes(draftKey))
-    .slice(0, 12);
-  const exactSuggestion = suggestions.some((tag) => tag.toLocaleLowerCase('zh-CN') === draftKey);
+    .slice(0, 12), [normalizedSuggestions, selectedKeys, draftKey]);
+  const exactSuggestion = useMemo(
+    () => normalizedSuggestions.some((tag) => tag.toLocaleLowerCase('zh-CN') === draftKey),
+    [normalizedSuggestions, draftKey],
+  );
 
   const commit = () => {
     const next = normalizedTags([...value, draft], maximum);
