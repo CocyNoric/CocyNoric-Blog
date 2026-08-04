@@ -166,7 +166,7 @@ export function AdminRepositoryPage() {
     </div>
 
     <section className="repository-tools-panel" aria-labelledby="code-tools-heading">
-      <div className="section-heading"><div><p className="eyebrow">code-tools/</p><h2 id="code-tools-heading">代码和工具</h2></div><p className="section-description">上传文件夹或 ZIP 项目；所有文件只作为附件下载，不会执行。</p></div>
+      <div className="section-heading"><div><p className="eyebrow">code-tools/</p><h2 id="code-tools-heading">代码和工具</h2></div><p className="section-description">上传文件夹或 ZIP 项目；所有文件只作为附件下载。</p></div>
 
       <div className="repository-project-upload">
         <div className="repository-upload-fields">

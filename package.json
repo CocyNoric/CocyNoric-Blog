@@ -19,6 +19,7 @@
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",
     "busboy": "^1.6.0",
+    "compression": "^1.8.1",
     "cookie": "^2.0.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@types/busboy": "^1.5.4",
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",

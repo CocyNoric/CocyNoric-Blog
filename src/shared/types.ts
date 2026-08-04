@@ -1,4 +1,4 @@
-import type { CodeToolItem, CodeToolProject, PostMeta, SiteSettings } from './schemas.js';
+import type { CodeToolItem, CodeToolProject, GalleryItem, PostMeta, SiteSettings } from './schemas.js';
 
 export type RepositoryAreaKey = 'markdown' | 'gallery' | 'code-tools';
 
@@ -72,6 +72,24 @@ export type CodeToolProjectListing = {
 
 export type PublicPost = PostMeta & {
   html: string;
+};
+
+export type HomePayload = {
+  settings: PublicSettings;
+  posts: PostSummary[];
+  gallery: GalleryItem[];
+};
+
+export type PostPagePayload = {
+  post: PublicPost;
+  recentPosts?: PostSummary[];
+  galleryItems?: GalleryItem[];
+};
+
+export type GalleryPagePayload = {
+  item: GalleryItem;
+  recentPosts?: PostSummary[];
+  galleryItems?: GalleryItem[];
 };
 
 export type AdminPost = PostMeta & {

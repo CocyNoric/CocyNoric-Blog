@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import 'katex/dist/katex.min.css';
 import { Link, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary, PublicPost } from '../../shared/types.js';
+import { categoryDisplayName } from '../../shared/categories.js';
 import { api } from '../api.js';
 import { ArrowIcon, CalendarIcon } from '../components/Icons.js';
 import { DetailPageLayout } from '../components/DetailPageLayout.js';
@@ -19,19 +21,18 @@ export function PostPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const controller = new AbortController();
     window.scrollTo(0, 0);
     setPost(null); setError(''); setSupplementalError('');
     setRecentPosts(undefined); setGalleryItems(undefined);
-    void api.post(slug).then((value) => {
-      setPost(value);
-      document.title = `${value.title} · ${settings.siteName}`;
-    }).catch((cause: Error) => setError(cause.message));
-
-    const requests: Promise<unknown>[] = [];
-    if (config.showRecentPosts) requests.push(api.posts().then((posts) => setRecentPosts(posts.filter((candidate) => candidate.slug !== slug).slice(0, config.recentPostsLimit))).catch(() => setSupplementalError('最近文章暂时无法载入。')));
-    if (config.showRecentGallery) requests.push(api.gallery().then((items) => setGalleryItems(items.slice(0, config.recentGalleryLimit))).catch(() => setSupplementalError((current) => current ? `${current} 最近画廊暂时无法载入。` : '最近画廊暂时无法载入。')));
-    void Promise.all(requests);
-  }, [slug, settings.siteName, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
+    void api.postContext(slug, controller.signal).then((payload) => {
+      setPost(payload.post);
+      setRecentPosts(payload.recentPosts);
+      setGalleryItems(payload.galleryItems);
+      document.title = `${payload.post.title} · ${settings.siteName}`;
+    }).catch((cause: Error) => { if (!controller.signal.aborted) setError(cause.message); });
+    return () => controller.abort();
+  }, [slug, settings.siteName, settings.contentVisibility.gallery, config.showRecentPosts, config.recentPostsLimit, config.showRecentGallery, config.recentGalleryLimit]);
 
   if (error) return <main id="main" className="page-shell"><div className="empty-state"><h1>文章未找到</h1><p>{error}</p><Link className="button primary-button" to="/articles">返回文章列表</Link></div></main>;
   if (!post) return <main id="main" className="page-shell"><p className="loading-state">正在载入文章…</p></main>;
@@ -46,10 +47,9 @@ export function PostPage() {
     >
       <article className="article-surface">
         <header className="article-header">
-          <div className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></div>
+          <div className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time><span aria-hidden="true">·</span><Link className="post-category-link" to={`/articles?category=${encodeURIComponent(post.category)}`}>{categoryDisplayName(post.category)}</Link></div>
           <h1>{post.title}</h1>
           {post.excerpt && <p>{post.excerpt}</p>}
-          <div className="tag-list">{post.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>
         </header>
         <div className="markdown-body" dangerouslySetInnerHTML={{ __html: post.html }} />
       </article>
