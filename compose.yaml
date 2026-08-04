@@ -1,0 +1,41 @@
+name: cocynoric-blog
+
+services:
+  blog:
+    image: ${BLOG_IMAGE:-ghcr.io/cocynoric/cocynoric-blog:latest}
+    restart: unless-stopped
+    init: true
+    user: "${BLOG_UID:-1000}:${BLOG_GID:-1000}"
+    read_only: true
+    environment:
+      NODE_ENV: production
+      BLOG_HOST: 0.0.0.0
+      BLOG_PORT: 3000
+      BLOG_DATA_DIR: /app/data
+      BLOG_PUBLIC_ORIGINS: ${BLOG_PUBLIC_ORIGINS:?BLOG_PUBLIC_ORIGINS must be set}
+      BLOG_COOKIE_SECURE: ${BLOG_COOKIE_SECURE:-true}
+      BLOG_TRUST_PROXY_HOPS: ${BLOG_TRUST_PROXY_HOPS:-0}
+    ports:
+      - "${BLOG_BIND_ADDRESS:-127.0.0.1}:${BLOG_HOST_PORT:-3000}:3000"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 40s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/healthz').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 4

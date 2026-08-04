@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "description": "A self-hosted Material Design 3 blog with Markdown and LaTeX support",
   "private": true,
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
-    "build": "tsc -p tsconfig.server.json && vite build && vite build --ssr src/server/index.ts --outDir dist/server/server",
+    "build": "tsc -p tsconfig.server.json && vite build && vite build --ssr src/server/index.ts --outDir dist/server/server && vite build --ssr scripts/admin.ts --outDir dist/server/admin",
     "start": "node scripts/start.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",

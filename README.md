@@ -26,7 +26,7 @@
 
 ### 环境要求
 
-- Node.js 22 或更高版本
+- Node.js 24.15 LTS（CI 与生产镜像使用的版本）或受依赖支持的更新版本
 - npm
 
 ### 本地开发
@@ -111,6 +111,20 @@ my-post.zip
 
 ## 生产部署
 
+项目提供多阶段 Docker 镜像和 Compose 配置。容器以非 root 用户运行，根文件系统只读，运行时状态只写入宿主机的 `data/`：
+
+```bash
+cp .env.example .env
+# 修改 BLOG_PUBLIC_ORIGINS、代理跳数以及宿主机 UID/GID
+docker compose up -d
+docker compose ps
+curl --fail http://127.0.0.1:3000/healthz
+```
+
+默认只把应用映射到宿主机的 `127.0.0.1:3000`，建议由同一台 Ubuntu 主机上的 Caddy 或 Nginx 提供 HTTPS。`BLOG_UID` 和 `BLOG_GID` 必须能写入 Compose 文件旁的 `data/`；通常将它们设置为部署 runner 账户的 `id -u` 和 `id -g`。
+
+不使用 Docker 时仍可直接运行：
+
 ```bash
 npm ci
 npm run build
@@ -147,6 +161,8 @@ npm start
 | `BLOG_DATA_DIR` | 设置、文章、图片、仓库、管理员摘要和会话的保存目录 | `<项目目录>/data` |
 | `BLOG_COOKIE_SECURE` | 是否只通过 HTTPS 发送登录 Cookie | 开发：`false`；生产：`true` |
 
+`GET /healthz` 在服务完成数据初始化并开始监听后返回 `{"status":"ok"}`，供 Docker 和部署流程判断就绪状态。
+
 Windows PowerShell 开放局域网开发访问示例：
 
 ```powershell
@@ -156,6 +172,75 @@ npm run dev
 ```
 
 如果经由不同域名或端口访问，请同时把浏览器中的完整来源（协议、主机和端口）加入 `BLOG_PUBLIC_ORIGINS`。
+
+## GitHub Actions CI/CD
+
+`.github/workflows/ci-cd.yml` 实现以下流程：
+
+1. 针对发往 `dev` 或 `main` 的 Pull Request，以及这两个分支上的 push，执行锁定依赖安装、类型检查、完整测试和生产构建。
+2. 构建 Docker 镜像，并实际启动镜像等待健康检查；PR 和 `dev` 只验证 `linux/amd64`，不推送镜像。
+3. `main` 验证成功后，发布同时支持 `linux/amd64` 和 `linux/arm64` 的镜像，将 `latest` 与 `sha-<commit>` 标签推送到 `ghcr.io/cocynoric/cocynoric-blog`，同时生成 SBOM 和 provenance。
+4. GitHub 上的镜像任务完成后，带 `blog-prod` 标签的 Ubuntu self-hosted runner 按镜像 digest 部署，而不是使用可漂移的 `latest` 标签。
+
+### 分支规则
+
+仓库约定发布方向为：
+
+```text
+功能/修复分支 -> dev -> main
+```
+
+工作流会拒绝所有“源分支不是本仓库 `dev`、目标分支却是 `main`”的 Pull Request；`main` push 还必须是包含 `dev` 历史父节点的 merge commit，否则不会发布或部署。为了在写入发生前禁止直接 push，仍须在 GitHub 的 **Settings → Rules → Rulesets** 创建两条规则：
+
+- `main`：要求 Pull Request、要求 `Verify` 和 `Build image` 状态检查通过、禁止 force push 和删除；不要给日常账户配置 bypass。发布合并必须使用 merge commit，以保持 `dev` 与 `main` 的祖先关系。
+- `dev`：要求 Pull Request、要求 `Verify` 和 `Build image` 状态检查通过、禁止 force push 和删除；允许其他功能或修复分支作为 PR 源分支。
+
+状态检查需要先让工作流至少运行一次，之后 `Verify` 和 `Build image` 才会出现在 Ruleset 的可选列表中。工作流只能检查已经创建的 PR，真正阻止直接写入分支的是 GitHub Ruleset。Dependabot 的 npm、GitHub Actions 和 Docker 周更 PR 也统一以 `dev` 为目标分支。
+
+### 首次发布 GHCR
+
+GitHub Packages 首次创建的容器包通常是私有的。第一次合并到 `main` 后：
+
+1. 打开 GitHub 个人主页的 **Packages → cocynoric-blog → Package settings**。
+2. 确认包已连接到本仓库。
+3. 在 **Danger Zone → Change visibility** 将其改为 Public。
+4. 重新运行失败的 `CI and CD` 工作流；此后 Ubuntu 主机不需要保存 GHCR 令牌即可拉取镜像。
+
+### Ubuntu 部署主机
+
+主机需要 Docker Engine、Docker Compose v2 插件和可访问 GitHub/GHCR 的网络。注册仓库级 self-hosted runner 时，在默认的 `self-hosted`、`Linux`、架构标签之外增加 `blog-prod`，并让 runner 使用专门的低权限账户。该账户加入 `docker` 组等同于授予宿主机 root 级能力，因此不要让这个 runner 执行来自 Pull Request 的任务；当前部署 job 只会在 `main` 上运行。
+
+准备固定部署目录，下面的 `github-runner` 请替换为实际 runner 用户：
+
+```bash
+RUNNER_USER=github-runner
+sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" /opt/cocynoric-blog
+sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" /opt/cocynoric-blog/data
+sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" /opt/cocynoric-blog/backups
+sudo -u "$RUNNER_USER" cp /path/to/CocyNoric-Blog/.env.example /opt/cocynoric-blog/.env
+id -u "$RUNNER_USER"
+id -g "$RUNNER_USER"
+sudo -u "$RUNNER_USER" nano /opt/cocynoric-blog/.env
+```
+
+把最后两条 `id` 命令得到的值写入 `.env` 的 `BLOG_UID` 和 `BLOG_GID`。若要更换目录，可以在 GitHub **Settings → Environments → production → Environment variables** 设置 `BLOG_DEPLOY_DIR` 和 `BLOG_BACKUP_DIR`；默认分别为 `/opt/cocynoric-blog` 和 `/opt/cocynoric-blog/backups`。
+
+部署脚本会先拉取新镜像，随后停止旧容器，将包括隐藏文件在内的全部数据备份为 `backups/data-<UTC时间>.tar.gz`，最后启动新容器并等待健康检查。脚本保留 `.deploy.env.previous` 中的旧镜像 digest，但不会自动回滚：新版本启动时可能迁移数据，安全回退必须将旧镜像与部署前的数据备份一起恢复。备份不会自动删除，请另行设置符合保留策略的清理和异机备份。
+
+在部署主机上查看当前服务时，需要同时加载脚本维护的镜像文件：
+
+```bash
+cd /opt/cocynoric-blog
+docker compose --env-file .env --env-file .deploy.env -f compose.yaml ps
+docker compose --env-file .env --env-file .deploy.env -f compose.yaml logs --tail=100 blog
+```
+
+首次部署成功后，在交互终端中创建管理员；以后修改密码使用第二条命令：
+
+```bash
+docker compose --env-file .env --env-file .deploy.env -f compose.yaml exec blog node dist/server/admin/admin.js create
+docker compose --env-file .env --env-file .deploy.env -f compose.yaml exec blog node dist/server/admin/admin.js change-password
+```
 
 ## 数据、备份与升级
 
@@ -199,6 +284,9 @@ src/
 scripts/          # 开发、生产启动与管理员命令
 tests/            # Node.js 测试
 public/           # 不经构建处理的静态资源
+Dockerfile        # 多阶段生产镜像
+compose.yaml      # Ubuntu 单实例部署定义
+.github/          # CI、镜像发布与本地 CD 工作流
 data/             # 本地运行时数据（不提交）
 dist/             # 生产构建产物（不提交）
 ```
