@@ -5,7 +5,7 @@ import { useSettings } from '../hooks/useSettings.js';
 import { MoonIcon, SearchIcon, SunIcon } from './Icons.js';
 
 export function SiteHeader() {
-  const { settings } = useSettings();
+  const { settings, loading } = useSettings();
   const { mode, toggle } = useColorMode();
   const location = useLocation();
   const navigate = useNavigate();
@@ -13,6 +13,11 @@ export function SiteHeader() {
     ? new URLSearchParams(location.search).get('q') ?? ''
     : '';
   const [query, setQuery] = useState(activeQuery);
+  const visibility = settings.contentVisibility;
+  const hasNavigation = visibility.articles || visibility.gallery || visibility.repository;
+  const searchLabel = visibility.articles && visibility.gallery
+    ? '搜索文章和画廊'
+    : visibility.articles ? '搜索文章' : visibility.gallery ? '搜索画廊' : '搜索站点内容';
 
   useEffect(() => setQuery(activeQuery), [activeQuery]);
 
@@ -30,18 +35,18 @@ export function SiteHeader() {
           {settings.webIcon && <span className="brand-avatar" aria-hidden="true"><img src={settings.webIcon} alt="" /></span>}
           <span>{settings.siteName}</span>
         </Link>
-        <nav className="main-nav" aria-label="主导航">
-          <Link to="/articles">文章</Link>
-          <Link to="/gallery">画廊</Link>
-          <Link to="/repository">仓库</Link>
-        </nav>
+        {!loading && hasNavigation && <nav className="main-nav" aria-label="主导航">
+          {visibility.articles && <Link to="/articles">文章</Link>}
+          {visibility.gallery && <Link to="/gallery">画廊</Link>}
+          {visibility.repository && <Link to="/repository">仓库</Link>}
+        </nav>}
       </div>
       <div className="header-actions">
-        <form className="header-search" role="search" onSubmit={search}>
+        {!loading && <form className="header-search" role="search" onSubmit={search}>
           <SearchIcon />
-          <label className="visually-hidden" htmlFor="site-search">搜索文章和画廊</label>
+          <label className="visually-hidden" htmlFor="site-search">{searchLabel}</label>
           <input id="site-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索" />
-        </form>
+        </form>}
         <button className="icon-button" type="button" onClick={toggle} aria-label={mode === 'dark' ? '切换到亮色模式' : '切换到暗色模式'} title={mode === 'dark' ? '亮色模式' : '暗色模式'}>
           {mode === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>

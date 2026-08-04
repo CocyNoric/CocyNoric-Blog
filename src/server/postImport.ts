@@ -13,6 +13,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import yauzl, { type Entry, type ZipFile } from 'yauzl';
 import type { AdminPost } from '../shared/types.js';
+import { maximumCategoryDepth, maximumCategorySegmentLength } from '../shared/categories.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
 import { uploadError } from './media.js';
@@ -368,6 +369,10 @@ function normalizedTags(value: unknown) {
   return [...new Set(values.map((item) => typeof item === 'string' ? item.trim().slice(0, 32) : '').filter(Boolean))].slice(0, 12);
 }
 
+function normalizedCategory(value: unknown) {
+  return typeof value === 'string' ? value.trim().slice(0, maximumCategoryDepth * maximumCategorySegmentLength + maximumCategoryDepth - 1) : '';
+}
+
 function slugCandidate(value: string) {
   return value
     .normalize('NFKD')
@@ -442,6 +447,7 @@ async function createImportedPost(source: Buffer, filename: string, images?: Map
         excerpt: typeof parsed.data.excerpt === 'string' ? parsed.data.excerpt.trim().slice(0, 320) : '',
         date: normalizedDate(parsed.data.date),
         status: 'draft',
+        category: normalizedCategory(parsed.data.category),
         tags: normalizedTags(parsed.data.tags),
         markdown,
       },

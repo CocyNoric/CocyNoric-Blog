@@ -3,7 +3,7 @@ import type { PublicSettings } from '../../shared/types.js';
 import { api } from '../api.js';
 
 const fallbackSettings: PublicSettings = {
-  version: 10,
+  version: 11,
   siteName: "CocyNoric's Blog",
   homeTitle: "CocyNoric's Blog",
   footerText: "CocyNoric's Blog",
@@ -21,6 +21,11 @@ const fallbackSettings: PublicSettings = {
     showItemCounts: true,
     showFileMetadata: true,
     showRecentUpdates: true,
+  },
+  contentVisibility: {
+    articles: true,
+    gallery: true,
+    repository: true,
   },
   footerMode: 'transparent',
   homeContent: {
@@ -61,6 +66,8 @@ const fallbackSettings: PublicSettings = {
     gallery: {
       railSide: 'right',
       railWidth: 340,
+      gridMaxColumns: 3,
+      showcaseCardImageLimit: 5,
       showRecentPosts: true,
       recentPostsLimit: 4,
       showRecentGallery: true,
@@ -91,7 +98,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    const next = await api.settings();
+    const next = window.location.pathname === '/'
+      ? (await api.home()).settings
+      : await api.settings();
     setSettings(next);
   };
 

@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "description": "A self-hosted Material Design 3 blog with Markdown and LaTeX support",
   "private": true,
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
-    "build": "tsc -p tsconfig.server.json && vite build && vite build --ssr src/server/index.ts --outDir dist/server/server",
+    "build": "tsc -p tsconfig.server.json && vite build && vite build --ssr src/server/index.ts --outDir dist/server/server && vite build --ssr scripts/admin.ts --outDir dist/server/admin",
     "start": "node scripts/start.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
@@ -19,6 +22,7 @@
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",
     "busboy": "^1.6.0",
+    "compression": "^1.8.1",
     "cookie": "^2.0.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
@@ -45,6 +49,7 @@
   },
   "devDependencies": {
     "@types/busboy": "^1.5.4",
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",

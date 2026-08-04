@@ -47,7 +47,11 @@ export function RepositoryPage() {
   const [listing, setListing] = useState<RepositoryListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const selected = isDirectory(directory) ? directory : undefined;
+  const routeDirectory = isDirectory(directory) ? directory : undefined;
+  const isAreaVisible = (area: Directory) => area === 'markdown'
+    ? settings.contentVisibility.articles
+    : area === 'gallery' ? settings.contentVisibility.gallery : true;
+  const selected = routeDirectory && isAreaVisible(routeDirectory) ? routeDirectory : undefined;
   const invalidDirectory = directory !== undefined && !selected;
   const appearance = settings.repositoryAppearance;
   const heading = selected ? directories.find((item) => item.slug === selected)! : null;
@@ -87,7 +91,8 @@ export function RepositoryPage() {
     : settings.repositoryDescription;
   const layoutClass = appearance.directoryLayout === 'list' ? 'repository-layout-list' : '';
   const surfaceClass = appearance.surfaceOpacity < 1 ? 'repository-surface-transparent' : '';
-  const areas = overview?.areas ?? directories.map((item) => ({ ...item, key: item.slug, entryCount: 0, updatedAt: null }));
+  const areas = (overview?.areas ?? directories.map((item) => ({ ...item, key: item.slug, entryCount: 0, updatedAt: null })))
+    .filter((area) => isAreaVisible(area.key));
 
   const breadcrumbs = useMemo(() => {
     if (!selected) return [];
@@ -162,7 +167,7 @@ export function RepositoryPage() {
 
       {!invalidDirectory && !loading && !error && !selected && <div className={`repository-directory-grid ${layoutClass} ${surfaceClass}`}>
         {areas.map((area) => <Link className="repository-directory" key={area.key} to={`/repository/${area.key}`}>
-          <span className="repository-folder-mark" aria-hidden="true" />
+          <span className="repository-folder-mark"><FolderIcon /></span>
           <span className="repository-directory-copy"><strong>{area.key}/</strong>{appearance.showDescriptions && <small>{area.description}</small>}</span>
           {appearance.showItemCounts && <span className="repository-count">{area.entryCount} 项</span>}<ArrowIcon />
         </Link>)}

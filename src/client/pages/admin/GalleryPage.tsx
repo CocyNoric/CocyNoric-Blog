@@ -1,11 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react';
-import type { GalleryItem, ThumbnailAspectRatio } from '../../../shared/schemas.js';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react';
+import { Link } from 'react-router-dom';
+import type { GalleryItem, GalleryMedia, ThumbnailAspectRatio } from '../../../shared/schemas.js';
+import { galleryCategoryFromTags, galleryTagsForItem, summarizeGalleryTags } from '../../../shared/galleryTags.js';
 import { galleryCropAspectRatio, GalleryCropImage } from '../../components/GalleryCropImage.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
-import { DragHandleIcon, EditIcon, ImageIcon, TrashIcon } from '../../components/Icons.js';
+import { DragHandleIcon, EditIcon, ImageIcon, TrashIcon, UploadIcon } from '../../components/Icons.js';
 import { ImageDropField } from '../../components/ImageDropField.js';
+import { SortableGalleryImageQueue } from '../../components/SortableGalleryImageQueue.js';
+import { TagInput } from '../../components/TagInput.js';
 import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
 
@@ -60,6 +64,7 @@ export function GalleryPage() {
   const [liveMessage, setLiveMessage] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [cardFocus, setCardFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
@@ -71,8 +76,10 @@ export function GalleryPage() {
   const [pendingDelete, setPendingDelete] = useState<GalleryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<GalleryItem | null>(null);
+  const [editImages, setEditImages] = useState<GalleryMedia[]>([]);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [editCardFocus, setEditCardFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [editCardAspectRatio, setEditCardAspectRatio] = useState<ThumbnailAspectRatio>('4:3');
   const [editThumbnailFocus, setEditThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
@@ -209,9 +216,9 @@ export function GalleryPage() {
     if (!file) { setError('请选择要上传的图片'); return; }
     setBusy(true); setError(''); setMessage('');
     try {
-      const item = await api.uploadGalleryItem({ title, description, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken);
+      const item = await api.uploadGalleryItem({ title, description, category: galleryCategoryFromTags(tags), tags, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken);
       setItems((current) => [item, ...current]);
-      setTitle(''); setDescription(''); setFile(null); setCardFocus({ x: 0.5, y: 0.5, size: 1 }); setCardAspectRatio('original'); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 }); setThumbnailAspectRatio('1:1'); setCropPositioning('center');
+      setTitle(''); setDescription(''); setTags([]); setFile(null); setCardFocus({ x: 0.5, y: 0.5, size: 1 }); setCardAspectRatio('original'); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 }); setThumbnailAspectRatio('1:1'); setCropPositioning('center');
       setMessage('图片已上传并发布到首页画廊。');
     } catch (cause) {
       setError((cause as Error).message);
@@ -238,6 +245,8 @@ export function GalleryPage() {
   const beginEdit = (item: GalleryItem) => {
     setEditTitle(item.title);
     setEditDescription(item.description);
+    setEditTags(galleryTagsForItem(item));
+    setEditImages(item.images);
     setEditCardFocus(item.cardFocus);
     setEditCardAspectRatio(item.cardAspectRatio);
     setEditThumbnailFocus(item.thumbnailFocus);
@@ -254,6 +263,10 @@ export function GalleryPage() {
       const item = await api.updateGalleryItem(editing.id, {
         title: editTitle,
         description: editDescription,
+        category: galleryCategoryFromTags(editTags),
+        tags: editTags,
+        coverImageId: editImages[0]?.mediaId,
+        imageOrder: editImages.map((image) => image.mediaId),
         cardFocus: editCardFocus,
         cardAspectRatio: editCardAspectRatio,
         thumbnailFocus: editThumbnailFocus,
@@ -262,7 +275,7 @@ export function GalleryPage() {
       }, csrfToken);
       setItems((current) => current.map((candidate) => candidate.id === item.id ? item : candidate));
       setEditing(null);
-      setMessage('图片信息已更新。');
+      setMessage('图片信息与顺序已更新。');
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -407,9 +420,13 @@ export function GalleryPage() {
     focusHandle(item.id);
   };
 
-  const pointerOrder = pointerPreview
+  const pointerOrder = useMemo(() => pointerPreview
     ? moveIntoVisualSlot(items, pointerPreview.id, pointerPreview.slotIndex)
-    : items;
+    : items, [items, pointerPreview]);
+  const pointerOrderIndexes = useMemo(() => new Map(pointerOrder.map((item, index) => [item.id, index])), [pointerOrder]);
+  const tagsByItem = useMemo(() => new Map(items.map((item) => [item.id, galleryTagsForItem(item)])), [items]);
+  const galleryImageCount = useMemo(() => items.reduce((total, item) => total + item.images.length, 0), [items]);
+  const tagSuggestions = useMemo(() => summarizeGalleryTags(items).map((summary) => summary.tag), [items]);
 
   return <main id="main" className="page-shell admin-shell gallery-admin-shell">
     <AdminNav />
@@ -428,25 +445,30 @@ export function GalleryPage() {
         <span className="media-preview gallery-upload-preview">{previewUrl ? <img src={previewUrl} alt="待上传图片预览" /> : <ImageIcon />}</span>
         <span>
           <strong>{file ? file.name : '选择或拖入画廊图片'}</strong>
-          {!file && <small>PNG、JPEG 或 WebP，最大 25 MB；保留原文件名与格式</small>}
+          {!file && <small>PNG、JPEG 或 WebP，最大 25 MB；保留原图，并生成 WebP 展示图</small>}
         </span>
       </ImageDropField>
       <div className="gallery-upload-fields">
         <label className="form-field"><span>标题</span><input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} required /></label>
         <label className="form-field"><span>说明</span><textarea rows={2} value={description} maxLength={240} onChange={(event) => setDescription(event.target.value)} /></label>
-        <button className="button primary-button" disabled={busy || savingOrder}>{busy ? '正在上传…' : '上传到画廊'}</button>
+        <div className="form-field"><span>标签</span><TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} /><small>选择已有标签，或输入后按回车新建；最多 12 个</small></div>
+        <div className="gallery-upload-submit-row">
+          <button className="button primary-button" disabled={busy || savingOrder}>{busy ? '正在上传…' : '上传到画廊'}</button>
+          <Link className="button secondary-button" to="/admin/gallery/upload"><UploadIcon />高级上传</Link>
+        </div>
       </div>
       {previewUrl && <ThumbnailFocalSelector imageUrl={previewUrl} cardFocus={cardFocus} onCardFocusChange={setCardFocus} cardAspectRatio={cardAspectRatio} onCardAspectRatioChange={setCardAspectRatio} thumbnailFocus={thumbnailFocus} onThumbnailFocusChange={setThumbnailFocus} thumbnailAspectRatio={thumbnailAspectRatio} onThumbnailAspectRatioChange={setThumbnailAspectRatio} cropPositioning={cropPositioning} onCropChange={() => setCropPositioning('center')} />}
     </form>
 
     <section className="gallery-admin-list" aria-labelledby="gallery-list-heading">
-      <div className="section-heading"><div><p className="eyebrow">已发布</p><h2 id="gallery-list-heading">图片</h2><p className="gallery-order-help">拖动左上角手柄调整展示顺序。{savingOrder && ' 正在保存排序…'}</p></div><p className="section-description">共 {items.length} 张</p></div>
+      <div className="section-heading"><div><p className="eyebrow">已发布</p><h2 id="gallery-list-heading">展示单位</h2><p className="gallery-order-help">拖动左上角手柄调整展示顺序。{savingOrder && ' 正在保存排序…'}</p></div><p className="section-description">共 {items.length} 个展示单位 · {galleryImageCount} 张图片</p></div>
       <p className="visually-hidden" id="gallery-order-instructions">按空格或回车抓取图片，方向键移动，Home 或 End 移到首尾，Escape 取消。</p>
       <div className="visually-hidden" aria-live="polite">{liveMessage}</div>
       {items.length === 0
         ? <div className="gallery-empty">还没有图片，使用上方入口上传第一张。</div>
         : <div className={`gallery-grid gallery-order-grid${pointerPreview ? ' is-sorting' : ''}`} ref={gridRef} aria-busy={savingOrder}>{items.map((entry) => {
-          const index = pointerOrder.findIndex((item) => item.id === entry.id);
+          const index = pointerOrderIndexes.get(entry.id) ?? 0;
+          const entryTags = tagsByItem.get(entry.id) ?? [];
           return <article className={`gallery-admin-card${activeDragId === entry.id ? ' is-pointer-placeholder' : ''}${keyboardDragId === entry.id ? ' is-keyboard-dragging' : ''}`} data-gallery-id={entry.id} key={entry.id} style={{ order: index }}>
           <button
             className="gallery-order-handle"
@@ -462,8 +484,8 @@ export function GalleryPage() {
             onLostPointerCapture={(event) => finishPointerDrag(event, true)}
             onKeyDown={(event) => handleKeyboardOrder(event, entry)}
           ><DragHandleIcon /></button>
-          <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} /></div>
-          <div className="gallery-admin-copy"><h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
+          <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} loading="lazy" focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} />{entry.images.length > 1 && <span className="gallery-image-count">{entry.images.length} 张</span>}</div>
+          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
           <div className="gallery-card-actions">
             <button className="icon-button" type="button" disabled={savingOrder} onClick={() => beginEdit(entry)} aria-label={`编辑${entry.title}`}><EditIcon /></button>
             <button className="icon-button danger" type="button" disabled={savingOrder} onClick={() => setPendingDelete(entry)} aria-label={`删除${entry.title}`}><TrashIcon /></button>
@@ -472,17 +494,18 @@ export function GalleryPage() {
         })}</div>}
       {pointerPreview && (() => {
         const item = items.find((candidate) => candidate.id === pointerPreview.id);
+        const itemTags = item ? tagsByItem.get(item.id) ?? [] : [];
         return item ? <article ref={overlayRef} aria-hidden="true" className="gallery-sort-overlay" style={{ width: pointerPreview.source.width }}>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(item)) }}><GalleryCropImage src={item.url} alt="" focus={item.cardFocus} aspectRatio={item.cardAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} /></div>
-          <div className="gallery-admin-copy"><h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
+          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
         </article> : null;
       })()}
     </section>
 
     <ConfirmDialog
       open={Boolean(pendingDelete)}
-      title="删除画廊图片？"
-      description={pendingDelete ? `“${pendingDelete.title}”及其图片文件会被永久删除。` : ''}
+      title="删除画廊展示单位？"
+      description={pendingDelete ? `“${pendingDelete.title}”及其 ${pendingDelete.images.length} 张图片文件会被永久删除。` : ''}
       confirmLabel="删除"
       destructive
       busy={deleting}
@@ -492,8 +515,8 @@ export function GalleryPage() {
 
     <ConfirmDialog
       open={Boolean(editing)}
-      title="编辑图片信息"
-      description="更新公开画廊和图片详情页中显示的标题与说明。"
+      title="编辑画廊展示"
+      description="更新整个展示单位的信息、图片顺序和缩略图裁切方式。"
       confirmLabel="保存"
       busy={savingEdit}
       wide
@@ -503,8 +526,17 @@ export function GalleryPage() {
       <div className="dialog-form">
         <label className="form-field"><span>标题</span><input value={editTitle} maxLength={120} onChange={(event) => setEditTitle(event.target.value)} required /></label>
         <label className="form-field"><span>说明</span><textarea rows={3} value={editDescription} maxLength={240} onChange={(event) => setEditDescription(event.target.value)} /></label>
+        <div className="form-field"><span>标签</span><TagInput value={editTags} onChange={setEditTags} disabled={savingEdit} suggestions={tagSuggestions} /><small>选择已有标签，或输入后按回车新建；最多 12 个</small></div>
+        {editing && editImages.length > 1 && <fieldset className="gallery-cover-fieldset"><legend>图片顺序</legend><p>拖动图片右下角的手柄调整顺序；第一张同时作为卡片和侧栏缩略图。</p><SortableGalleryImageQueue items={editImages.map((image) => ({ id: image.mediaId, imageUrl: image.url, name: image.originalFilename }))} onReorder={(ids) => setEditImages((current) => {
+          const byId = new Map(current.map((image) => [image.mediaId, image]));
+          const next = ids.flatMap((id) => {
+            const image = byId.get(id);
+            return image ? [image] : [];
+          });
+          return next.length === current.length ? next : current;
+        })} disabled={savingEdit} ariaLabel="编辑画廊图片顺序" /></fieldset>}
         {editing?.cropPositioning === 'legacy' && !cropEdited && <p className="form-help">此图片沿用旧版裁剪定位；调整裁剪中心、比例或缩放后会切换为新的中心点裁剪。</p>}
-        {editing && <ThumbnailFocalSelector imageUrl={editing.url} cardFocus={editCardFocus} onCardFocusChange={setEditCardFocus} cardAspectRatio={editCardAspectRatio} onCardAspectRatioChange={setEditCardAspectRatio} thumbnailFocus={editThumbnailFocus} onThumbnailFocusChange={setEditThumbnailFocus} thumbnailAspectRatio={editThumbnailAspectRatio} onThumbnailAspectRatioChange={setEditThumbnailAspectRatio} cropPositioning={cropEdited ? 'center' : editCropPositioning} onCropChange={() => setCropEdited(true)} />}
+        {editing && <ThumbnailFocalSelector imageUrl={editImages[0]?.url ?? editing.url} cardFocus={editCardFocus} onCardFocusChange={setEditCardFocus} cardAspectRatio={editCardAspectRatio} onCardAspectRatioChange={setEditCardAspectRatio} thumbnailFocus={editThumbnailFocus} onThumbnailFocusChange={setEditThumbnailFocus} thumbnailAspectRatio={editThumbnailAspectRatio} onThumbnailAspectRatioChange={setEditThumbnailAspectRatio} cropPositioning={cropEdited ? 'center' : editCropPositioning} onCropChange={() => setCropEdited(true)} />}
       </div>
     </ConfirmDialog>
   </main>;

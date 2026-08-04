@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { maximumCategoryDepth, maximumCategorySegmentLength, normalizeCategoryPath, uncategorizedCategory } from './categories.js';
 
 const localMediaPath = z.string().regex(/^\/media\/[a-f0-9-]+\.(png|jpe?g|webp)$/i);
 
@@ -39,6 +40,8 @@ const browsingSchema = z.object({
   }),
   gallery: z.object({
     ...browsingBaseFields,
+    gridMaxColumns: z.number().int().min(1).max(6).default(3),
+    showcaseCardImageLimit: z.number().int().min(1).max(20).default(5),
     mediaWidth: z.number().int().min(560).max(1100),
     portraitMaxHeight: z.number().int().min(560).max(1200),
     thumbnailColumns: z.number().int().min(1).max(5),
@@ -238,6 +241,23 @@ const settingsV10Schema = z.object({
   browsing: browsingSchema,
 });
 
+const contentVisibilitySchema = z.object({
+  articles: z.boolean(),
+  gallery: z.boolean(),
+  repository: z.boolean(),
+});
+
+export const defaultContentVisibility = {
+  articles: true,
+  gallery: true,
+  repository: true,
+} as const;
+
+const settingsV11Schema = settingsV10Schema.extend({
+  version: z.literal(11),
+  contentVisibility: contentVisibilitySchema,
+});
+
 const defaultRepositorySettings = {
   repositoryTitle: '仓库',
   repositoryDescription: '代码、工具与项目归档。',
@@ -262,15 +282,23 @@ function upgradeLegacySettings(legacy: z.infer<typeof settingsV2Schema>) {
   });
 }
 
+function upgradeV10Settings(legacy: z.infer<typeof settingsV10Schema>) {
+  return settingsV11Schema.parse({
+    ...legacy,
+    version: 11,
+    contentVisibility: defaultContentVisibility,
+  });
+}
+
 function upgradeV9Settings(legacy: z.infer<typeof settingsV9Schema>) {
-  return settingsV10Schema.parse({
+  return upgradeV10Settings(settingsV10Schema.parse({
     ...legacy,
     version: 10,
     repositoryAppearance: {
       ...legacy.repositoryAppearance,
       showRecentUpdates: legacy.repositoryAppearance.showFileMetadata,
     },
-  });
+  }));
 }
 
 function upgradeV8Settings(legacy: z.infer<typeof settingsV8Schema>) {
@@ -369,7 +397,8 @@ function upgradeV3Settings(legacy: z.infer<typeof settingsV3Schema>) {
 }
 
 export const settingsSchema = z.union([
-  settingsV10Schema,
+  settingsV11Schema,
+  settingsV10Schema.transform(upgradeV10Settings),
   settingsV9Schema.transform(upgradeV9Settings),
   settingsV8Schema.transform(upgradeV8Settings),
   settingsV7Schema.transform(upgradeV7Settings),
@@ -387,6 +416,18 @@ export function migrateSettings(raw: unknown): SiteSettings {
 
 export const postStatusSchema = z.enum(['draft', 'published']);
 
+export const postCategorySchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.replaceAll('／', '/').split('/').map((segment) => segment.trim()).join('/');
+  return normalized || undefined;
+}, z.string().trim().min(1).max(maximumCategoryDepth * maximumCategorySegmentLength + maximumCategoryDepth - 1)
+  .refine((value) => {
+    const segments = value.split('/');
+    return segments.length <= maximumCategoryDepth && segments.every((segment) => segment.length > 0 && segment.length <= maximumCategorySegmentLength);
+  }, `分类最多 ${maximumCategoryDepth} 级，每级最多 ${maximumCategorySegmentLength} 个字符`)
+  .transform(normalizeCategoryPath)
+  .default(uncategorizedCategory));
+
 export const postMetaSchema = z.object({
   id: z.string().uuid(),
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),
@@ -395,6 +436,7 @@ export const postMetaSchema = z.object({
   date: z.string().date(),
   updatedAt: z.string().datetime(),
   status: postStatusSchema,
+  category: postCategorySchema,
   tags: z.array(z.string().trim().min(1).max(32)).max(12),
 });
 
@@ -405,6 +447,7 @@ export const postInputSchema = z.object({
   excerpt: z.string().trim().max(320),
   date: z.string().date(),
   status: postStatusSchema,
+  category: postCategorySchema,
   tags: z.array(z.string().trim().min(1).max(32)).max(12),
   markdown: z.string().max(1024 * 1024),
   version: z.string().optional(),
@@ -433,11 +476,23 @@ const cropPositioningSchema = z.enum(['legacy', 'center']);
 
 const defaultThumbnailFocus = { x: 0.5, y: 0.5, size: 1 };
 
+const galleryTagsSchema = z.array(z.string().trim().min(1).max(32)).max(12).transform((tags) => {
+  const seen = new Set<string>();
+  return tags.filter((tag) => {
+    const key = tag.toLocaleLowerCase('zh-CN');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+});
+
 const legacyGalleryItemBaseSchema = z.object({
   id: z.string().uuid(),
   url: localMediaPath,
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
+  category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -463,7 +518,7 @@ const galleryFilenameSchema = z.string()
   .refine((value) => value !== '.' && value !== '..' && !/[. ]$/.test(value))
   .refine((value) => !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value));
 
-const galleryItemBaseSchema = z.object({
+const storedGalleryItemBaseSchema = z.object({
   id: galleryIdSchema,
   legacyId: z.string().uuid().optional(),
   url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
@@ -471,6 +526,8 @@ const galleryItemBaseSchema = z.object({
   displayFilename: galleryFilenameSchema.optional(),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240),
+  category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
   createdAt: z.string().datetime(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
@@ -481,13 +538,41 @@ const galleryItemBaseSchema = z.object({
   height: z.number().int().positive().optional(),
 });
 
-function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSchema> | z.infer<typeof galleryItemBaseSchema>>(item: T) {
+export const galleryMediaIdSchema = z.string().regex(/^\d{4}$/);
+
+export const galleryMediaSchema = z.object({
+  mediaId: galleryMediaIdSchema,
+  url: z.string().regex(/^\/media\/gallery\/\d{8}\/[^/?#]+$/).max(1024),
+  originalFilename: galleryFilenameSchema,
+  displayFilename: galleryFilenameSchema.optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+});
+
+const groupedGalleryItemBaseSchema = storedGalleryItemBaseSchema.extend({
+  coverImageId: galleryMediaIdSchema,
+  images: galleryMediaSchema.array().min(1).max(30),
+}).superRefine((item, context) => {
+  if (!item.images.some((image) => image.mediaId === item.coverImageId)) {
+    context.addIssue({ code: 'custom', path: ['coverImageId'], message: '画廊缩略图不在图片列表中' });
+  }
+  if (new Set(item.images.map((image) => image.mediaId)).size !== item.images.length) {
+    context.addIssue({ code: 'custom', path: ['images'], message: '画廊图片包含重复 ID' });
+  }
+  const filenames = item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US'));
+  if (new Set(filenames).size !== filenames.length) {
+    context.addIssue({ code: 'custom', path: ['images'], message: '画廊图片包含重复文件名' });
+  }
+});
+
+function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSchema> | z.infer<typeof storedGalleryItemBaseSchema>>(item: T) {
   const hasSplitConfiguration = item.cardFocus !== undefined || item.cardAspectRatio !== undefined;
   const legacyFocus = item.thumbnailFocus ?? defaultThumbnailFocus;
   const legacyAspectRatio = item.thumbnailAspectRatio ?? '4:3';
 
   return {
     ...item,
+    tags: item.tags ?? (item.category === uncategorizedCategory ? [] : [item.category]),
     cardFocus: item.cardFocus ?? legacyFocus,
     cardAspectRatio: item.cardAspectRatio ?? legacyAspectRatio,
     thumbnailFocus: hasSplitConfiguration
@@ -501,7 +586,31 @@ function normalizeGalleryItem<T extends z.infer<typeof legacyGalleryItemBaseSche
 }
 
 export const legacyGalleryItemSchema = legacyGalleryItemBaseSchema.transform(normalizeGalleryItem);
-export const galleryItemSchema = galleryItemBaseSchema.transform(normalizeGalleryItem);
+export const galleryItemSchema = z.union([groupedGalleryItemBaseSchema, storedGalleryItemBaseSchema]).transform((raw) => {
+  const item = normalizeGalleryItem(raw);
+  const images = 'images' in raw
+    ? raw.images
+    : [{
+      mediaId: '0001',
+      url: raw.url,
+      originalFilename: raw.originalFilename,
+      displayFilename: raw.displayFilename,
+      width: raw.width,
+      height: raw.height,
+    }];
+  const coverImageId = 'coverImageId' in raw ? raw.coverImageId : '0001';
+  const cover = images.find((image) => image.mediaId === coverImageId) ?? images[0];
+  return {
+    ...item,
+    url: cover.url,
+    originalFilename: cover.originalFilename,
+    displayFilename: cover.displayFilename,
+    width: cover.width,
+    height: cover.height,
+    coverImageId: cover.mediaId,
+    images,
+  };
+});
 
 export const galleryIndexSchema = z.object({
   version: z.literal(1),
@@ -512,6 +621,12 @@ export const galleryIndexSchema = z.object({
 export const galleryInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  category: postCategorySchema,
+  tags: galleryTagsSchema.optional(),
+  coverImageId: galleryMediaIdSchema.optional(),
+  imageOrder: galleryMediaIdSchema.array().min(1).max(30).superRefine((ids, context) => {
+    if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: '图片排序包含重复 ID' });
+  }).optional(),
   cardFocus: thumbnailFocusSchema.optional(),
   cardAspectRatio: thumbnailAspectRatioSchema.optional(),
   thumbnailFocus: thumbnailFocusSchema.optional(),
@@ -522,6 +637,11 @@ export const galleryInputSchema = z.object({
 export const galleryUploadInputSchema = z.object({
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(240).default(''),
+  category: postCategorySchema,
+  tags: z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value) as unknown; } catch { return value; }
+  }, galleryTagsSchema.optional()),
   cardFocusX: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusY: z.coerce.number().finite().min(0).max(1).default(0.5),
   cardFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
@@ -531,14 +651,18 @@ export const galleryUploadInputSchema = z.object({
   thumbnailFocusSize: z.coerce.number().finite().min(0.1).max(1).default(1),
   thumbnailAspectRatio: thumbnailAspectRatioSchema.default('1:1'),
   cropPositioning: cropPositioningSchema.default('center'),
-}).transform(({ title, description, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning }) => ({
+  coverIndex: z.coerce.number().int().min(0).max(29).default(0),
+}).transform(({ title, description, category, tags, cardFocusX, cardFocusY, cardFocusSize, cardAspectRatio, thumbnailFocusX, thumbnailFocusY, thumbnailFocusSize, thumbnailAspectRatio, cropPositioning, coverIndex }) => ({
   title,
   description,
+  category,
+  tags,
   cardAspectRatio,
   cardFocus: { x: cardFocusX, y: cardFocusY, size: cardFocusSize },
   thumbnailAspectRatio,
   thumbnailFocus: { x: thumbnailFocusX, y: thumbnailFocusY, size: thumbnailFocusSize },
   cropPositioning,
+  coverIndex,
 }));
 
 const codeToolFilenameSchema = z.string()
@@ -612,6 +736,7 @@ export type ThumbnailAspectRatio = z.infer<typeof thumbnailAspectRatioSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
+export type GalleryMedia = z.infer<typeof galleryMediaSchema>;
 export type GalleryIndex = z.infer<typeof galleryIndexSchema>;
 export type GalleryOrderInput = z.infer<typeof galleryOrderInputSchema>;
 export type GalleryInput = z.infer<typeof galleryInputSchema>;

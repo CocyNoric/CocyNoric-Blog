@@ -102,15 +102,24 @@ async function galleryEntries(pathname: string) {
   }
   const item = items.find((candidate) => candidate.id === pathname || candidate.legacyId === pathname);
   if (!item) return null;
-  const filenames = [item.originalFilename, ...(item.displayFilename ? [item.displayFilename] : [])];
-  return filenames.map((filename) => fileEntry({
-    name: filename,
-    path: `${item.id}/${filename}`,
-    icon: 'image',
-    description: filename === item.originalFilename ? `${item.title}（原图）` : `${item.title}（WebP 展示图）`,
-    updatedAt: item.createdAt,
-    href: filename === item.displayFilename ? item.url : `/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`,
-  }));
+  return item.images.flatMap((image, index) => [
+    fileEntry({
+      name: image.originalFilename,
+      path: `${item.id}/${image.originalFilename}`,
+      icon: 'image',
+      description: `${item.title}（第 ${index + 1} 张原图）`,
+      updatedAt: item.createdAt,
+      href: `/media/gallery/${item.id}/${encodeURIComponent(image.originalFilename)}`,
+    }),
+    ...(image.displayFilename ? [fileEntry({
+      name: image.displayFilename,
+      path: `${item.id}/${image.displayFilename}`,
+      icon: 'image',
+      description: `${item.title}（第 ${index + 1} 张 WebP 展示图）`,
+      updatedAt: item.createdAt,
+      href: image.url,
+    })] : []),
+  ]);
 }
 
 const codeToolProjectArchiveUrl = (slug: string) => `/api/repository/code-tools/projects/${encodeURIComponent(slug)}/archive`;

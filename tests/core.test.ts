@@ -10,7 +10,7 @@ import test, { after } from 'node:test';
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'cocynoric-blog-'));
 process.env.BLOG_DATA_DIR = dataDir;
 
-const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
+const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, createSession, readSession, saveAdminPassword, verifyPassword }, { postInputSchema, postMetaSchema, settingsSchema }, { importPostFile }, { matchesGalleryTitle }, { validateGalleryFilename }, { receiveGalleryImages }, { receiveCodeTool, receiveCodeToolProject, serveCodeToolProjectArchiveDownload, validateCodeToolFilename }, { repositoryOverview, repositoryTree }, { centeredCropFocus, centeredCropGeometry, cropAspectRatio }] = await Promise.all([
   import('../src/server/dataStore.js'),
   import('../src/server/markdown.js'),
   import('../src/server/auth.js'),
@@ -18,6 +18,7 @@ const [{ DataStore, dataStore }, { renderMarkdown }, { authenticatePassword, cre
   import('../src/server/postImport.js'),
   import('../src/shared/search.js'),
   import('../src/server/galleryFilename.js'),
+  import('../src/server/media.js'),
   import('../src/server/codeTools.js'),
   import('../src/server/repositoryStore.js'),
   import('../src/shared/galleryCrop.js'),
@@ -114,6 +115,29 @@ function createProjectUpload(input: {
   return received;
 }
 
+function createGalleryUpload(files: Array<{ name: string; source: Buffer }>) {
+  const boundary = '----cocynoric-gallery-group';
+  const parts: Buffer[] = [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="title"\r\n\r\n组合测试\r\n`)];
+  for (const file of files) {
+    parts.push(
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="images"; filename="${file.name}"\r\nContent-Type: image/png\r\n\r\n`),
+      file.source,
+      Buffer.from('\r\n'),
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  const body = Buffer.concat(parts);
+  const request = Object.assign(new PassThrough(), {
+    headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-length': String(body.length),
+    },
+  }) as Parameters<typeof receiveGalleryImages>[0];
+  const received = receiveGalleryImages(request);
+  request.end(body);
+  return received;
+}
+
 function createStreamingProjectUpload(input: {
   projectName: string;
   filename: string;
@@ -205,7 +229,8 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.profileName, 'CocyNoric');
   assert.equal(settings.profileAvatar, null);
   assert.equal(settings.webIcon, null);
-  assert.equal(settings.version, 10);
+  assert.equal(settings.version, 11);
+  assert.deepEqual(settings.contentVisibility, { articles: true, gallery: true, repository: true });
   assert.equal(settings.repositoryAppearance.backgroundImage, null);
   assert.equal(settings.repositoryAppearance.headingMinHeight, 220);
   assert.equal(settings.repositoryAppearance.titleAlign, 'left');
@@ -229,6 +254,8 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.browsing.article.thumbnailColumns, 2);
   assert.equal(settings.browsing.article.thumbnailRows, 3);
   assert.equal(settings.browsing.gallery.railWidth, 340);
+  assert.equal(settings.browsing.gallery.gridMaxColumns, 3);
+  assert.equal(settings.browsing.gallery.showcaseCardImageLimit, 5);
   assert.equal(settings.browsing.gallery.mediaWidth, 705);
   assert.equal(settings.browsing.gallery.portraitMaxHeight, 880);
   assert.equal(settings.browsing.gallery.thumbnailColumns, 2);
@@ -237,6 +264,7 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.footerText, "CocyNoric's Blog");
   assert.equal(posts.length, 3);
   assert.ok(posts.every((post) => post.status === 'published'));
+  assert.deepEqual(posts.map((post) => post.category), ['随笔', '技术', '项目']);
 });
 
 test('migrates legacy settings and persists independent profile and browsing options', async () => {
@@ -259,7 +287,8 @@ test('migrates legacy settings and persists independent profile and browsing opt
 
   const migratedV1 = settingsSchema.parse(legacy);
   assert.equal(migratedV1.footerText, "CocyNoric's Blog");
-  assert.equal(migratedV1.version, 10);
+  assert.equal(migratedV1.version, 11);
+  assert.deepEqual(migratedV1.contentVisibility, { articles: true, gallery: true, repository: true });
   assert.deepEqual(migratedV1.repositoryAppearance, {
     backgroundImage: null,
     headingMinHeight: 220,
@@ -287,7 +316,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     repositoryTitle: undefined,
     repositoryDescription: undefined,
   });
-  assert.equal(migratedV7.version, 10);
+  assert.equal(migratedV7.version, 11);
   assert.equal(migratedV7.repositoryTitle, '仓库');
   assert.equal(migratedV7.repositoryDescription, '代码、工具与项目归档。');
 
@@ -296,7 +325,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     showRecentGallery: false, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820,
   });
   assert.deepEqual(migratedV1.browsing.gallery, {
-    railSide: 'right', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
+    railSide: 'right', railWidth: 340, gridMaxColumns: 3, showcaseCardImageLimit: 5, showRecentPosts: true, recentPostsLimit: 4,
     showRecentGallery: true, recentGalleryLimit: 6, mediaWidth: 705,
     portraitMaxHeight: 880, thumbnailColumns: 2, thumbnailRows: 3,
   });
@@ -313,7 +342,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
       gallery: { side: 'left' as const },
     },
   });
-  assert.equal(migratedV2.version, 10);
+  assert.equal(migratedV2.version, 11);
   assert.equal(migratedV2.profileName, '旧站点名称');
   assert.equal(migratedV2.profileAvatar, legacyAvatar);
   assert.equal(migratedV2.webIcon, legacyAvatar);
@@ -340,7 +369,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
       },
     },
   });
-  assert.equal(migratedV5.version, 10);
+  assert.equal(migratedV5.version, 11);
   assert.equal(migratedV5.footerMode, 'transparent');
   assert.equal(migratedV5.galleryDescription, '项目、作品与视觉记录。');
   assert.equal(migratedV5.repositoryTitle, '仓库');
@@ -356,13 +385,14 @@ test('migrates legacy settings and persists independent profile and browsing opt
     profileName: '个人名称',
     profileAvatar: '/media/123e4567-e89b-12d3-a456-426614174001.png',
     webIcon: null,
+    contentVisibility: { articles: false, gallery: true, repository: true },
     browsing: {
       article: {
         railSide: 'right', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
         showRecentGallery: true, recentGalleryLimit: 3, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 880,
       },
       gallery: {
-        railSide: 'left', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
+        railSide: 'left', railWidth: 420, gridMaxColumns: 5, showcaseCardImageLimit: 7, showRecentPosts: true, recentPostsLimit: 8,
         showRecentGallery: true, recentGalleryLimit: 3, mediaWidth: 880,
         portraitMaxHeight: 900, thumbnailColumns: 3, thumbnailRows: 2,
       },
@@ -374,9 +404,12 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(saved.profileName, '个人名称');
   assert.equal(saved.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(saved.webIcon, null);
+  assert.equal(saved.contentVisibility.articles, false);
   assert.equal(saved.browsing.article.railWidth, 420);
   assert.equal(saved.browsing.article.railSide, 'right');
   assert.equal(saved.browsing.gallery.railSide, 'left');
+  assert.equal(saved.browsing.gallery.gridMaxColumns, 5);
+  assert.equal(saved.browsing.gallery.showcaseCardImageLimit, 7);
   assert.equal(saved.browsing.gallery.mediaWidth, 880);
   assert.equal(saved.browsing.gallery.thumbnailColumns, 3);
 
@@ -386,8 +419,11 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(persisted.repositoryDescription, '整理代码、工具和实验项目。');
   assert.equal(persisted.profileAvatar, '/media/123e4567-e89b-12d3-a456-426614174001.png');
   assert.equal(persisted.webIcon, null);
+  assert.equal(persisted.contentVisibility.articles, false);
   assert.equal(persisted.browsing.article.railWidth, 420);
   assert.equal(persisted.browsing.gallery.recentGalleryLimit, 3);
+  assert.equal(persisted.browsing.gallery.gridMaxColumns, 5);
+  assert.equal(persisted.browsing.gallery.showcaseCardImageLimit, 7);
 });
 
 test('preserves omitted settings during partial top-level and nested saves', async () => {
@@ -401,22 +437,28 @@ test('preserves omitted settings during partial top-level and nested saves', asy
   assert.equal(topLevel.footerText, before.footerText);
   assert.equal(topLevel.repositoryDescription, before.repositoryDescription);
   assert.deepEqual(topLevel.homeContent, before.homeContent);
+  assert.deepEqual(topLevel.contentVisibility, before.contentVisibility);
   assert.deepEqual(topLevel.browsing, before.browsing);
 
   const nested = await dataStore.writeSettings({
     repositoryAppearance: { showRecentUpdates: false },
+    contentVisibility: { gallery: false },
   });
   assert.equal(nested.siteName, '部分更新站点');
   assert.equal(nested.repositoryAppearance.showRecentUpdates, false);
   assert.equal(nested.repositoryAppearance.showFileMetadata, before.repositoryAppearance.showFileMetadata);
   assert.equal(nested.repositoryAppearance.directoryLayout, before.repositoryAppearance.directoryLayout);
   assert.equal(nested.repositoryAppearance.surfaceOpacity, before.repositoryAppearance.surfaceOpacity);
+  assert.equal(nested.contentVisibility.articles, before.contentVisibility.articles);
+  assert.equal(nested.contentVisibility.gallery, false);
+  assert.equal(nested.contentVisibility.repository, before.contentVisibility.repository);
   assert.deepEqual(nested.browsing, before.browsing);
 
   const persisted = await dataStore.readSettings();
   assert.equal(persisted.siteName, '部分更新站点');
   assert.equal(persisted.repositoryAppearance.showRecentUpdates, false);
   assert.equal(persisted.repositoryAppearance.showDescriptions, before.repositoryAppearance.showDescriptions);
+  assert.equal(persisted.contentVisibility.gallery, false);
 });
 
 test('rejects stale post saves and duplicate slugs', async () => {
@@ -445,6 +487,29 @@ test('rejects stale post saves and duplicate slugs', async () => {
     }),
     (error: Error & { code?: string }) => error.code === 'DUPLICATE_SLUG',
   );
+});
+
+test('normalizes article categories and defaults legacy posts to uncategorized', () => {
+  const legacyMeta = postMetaSchema.parse({
+    id: '123e4567-e89b-42d3-a456-426614174099',
+    slug: 'legacy-category',
+    title: '旧文章',
+    excerpt: '',
+    date: '2026-07-01',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    status: 'published',
+    tags: [],
+  });
+  assert.equal(legacyMeta.category, '未分类');
+
+  const input = {
+    slug: 'category-test', title: '分类测试', excerpt: '', date: '2026-07-01', status: 'draft' as const,
+    category: '  技术 ／ 前端 / React  ', tags: [], markdown: '',
+  };
+  assert.equal(postInputSchema.parse(input).category, '技术/前端/React');
+  assert.equal(postInputSchema.parse({ ...input, category: '' }).category, '未分类');
+  assert.equal(postInputSchema.safeParse({ ...input, category: 'x'.repeat(33) }).success, false);
+  assert.equal(postInputSchema.safeParse({ ...input, category: '一/二/三/四/五' }).success, false);
 });
 
 test('renders GFM and LaTeX without unsafe HTML', async () => {
@@ -491,12 +556,17 @@ test('stores gallery files under sequential identifiers without reusing deleted 
 
   assert.equal(first.id, '00000001');
   assert.equal(first.originalFilename, '第一张.png');
-  assert.equal(first.url, '/media/gallery/00000001/%E7%AC%AC%E4%B8%80%E5%BC%A0.png');
+  assert.equal(first.displayFilename, 'display.webp');
+  assert.equal(first.url, '/media/gallery/00000001/display.webp');
+  assert.equal(first.category, '未分类');
   assert.deepEqual((await dataStore.listGallery())[0]?.cardFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.cardAspectRatio, '4:3');
   assert.deepEqual((await dataStore.listGallery())[0]?.thumbnailFocus, { x: 0.5, y: 0.5, size: 1 });
   assert.equal((await dataStore.listGallery())[0]?.thumbnailAspectRatio, '1:1');
   assert.deepEqual(await readFile(dataStore.galleryFilePath(first)), png);
+  const firstDisplay = await readFile(dataStore.galleryDisplayFilePath(first));
+  assert.equal(firstDisplay.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(firstDisplay.subarray(8, 12).toString('ascii'), 'WEBP');
   assert.equal((await dataStore.deleteGalleryItem(first.id))?.id, first.id);
 
   const secondTemporary = path.join(dataStore.paths.tmp, '第二张.png');
@@ -506,7 +576,63 @@ test('stores gallery files under sequential identifiers without reusing deleted 
   await dataStore.deleteGalleryItem(second.id);
 });
 
-test('keeps gallery originals and creates WebP display copies above 5 MB', async () => {
+test('stores multiple gallery images as one item and derives the selected cover', async () => {
+  const temporaryPaths = ['group-one.png', 'group-two.png', 'group-three.png'].map((filename) => path.join(dataStore.paths.tmp, filename));
+  await Promise.all(temporaryPaths.map((temporaryPath) => writeFile(temporaryPath, png)));
+  const item = await dataStore.addGalleryGroup({
+    title: '组合画廊',
+    description: '三张图片，一个展示单位',
+    category: '作品 / 组合',
+    tags: ['插画', '夏日', '插画'],
+    images: temporaryPaths.map((temporaryPath, index) => ({
+      temporaryPath,
+      originalFilename: index === 2 ? 'group-two.png' : path.basename(temporaryPath),
+      width: 1,
+      height: 1,
+    })),
+    coverIndex: 1,
+  });
+
+  assert.equal(item.images.length, 3);
+  assert.deepEqual(item.tags, ['插画', '夏日']);
+  assert.equal(item.coverImageId, '0002');
+  assert.equal(item.url, item.images[1]?.url);
+  assert.equal(item.originalFilename, item.images[1]?.originalFilename);
+  assert.deepEqual(item.images.map((image) => image.displayFilename), ['display-0001.webp', 'display-0002.webp', 'display-0003.webp']);
+  assert.deepEqual(item.images.map((image) => image.originalFilename), ['group-one.png', 'group-two.png', 'group-two-2.png']);
+  for (const image of item.images) {
+    assert.deepEqual(await readFile(dataStore.galleryMediaFilePath(item, image)), png);
+    assert.equal((await readFile(dataStore.galleryMediaDisplayFilePath(item, image))).subarray(8, 12).toString('ascii'), 'WEBP');
+  }
+
+  const updated = await dataStore.updateGalleryItem(item.id, {
+    title: item.title,
+    description: item.description,
+    category: item.category,
+    coverImageId: '0003',
+    imageOrder: ['0003', '0001', '0002'],
+    cardFocus: item.cardFocus,
+    cardAspectRatio: item.cardAspectRatio,
+    thumbnailFocus: item.thumbnailFocus,
+    thumbnailAspectRatio: item.thumbnailAspectRatio,
+    cropPositioning: item.cropPositioning,
+  });
+  assert.equal(updated?.coverImageId, '0003');
+  assert.deepEqual(updated?.images.map((image) => image.mediaId), ['0003', '0001', '0002']);
+  assert.equal(updated?.url, updated?.images[0]?.url);
+  assert.deepEqual((await dataStore.listGallery()).find((candidate) => candidate.id === item.id)?.images.map((image) => image.mediaId), ['0003', '0001', '0002']);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, coverImageId: '0030' }), /缩略图不存在/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, imageOrder: ['0003', '0001'] }), /完整包含/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, imageOrder: ['0003', '0003', '0002'] }), /重复 ID/);
+  await assert.rejects(dataStore.updateGalleryItem(item.id, { title: item.title, description: '', category: item.category, coverImageId: '0001', imageOrder: ['0003', '0001', '0002'] }), /第一张图片/);
+
+  const listing = await repositoryTree('gallery', item.id);
+  assert.equal(listing.entries.length, 6);
+  assert.deepEqual(listing.entries.map((entry) => entry.name), ['display-0001.webp', 'display-0002.webp', 'display-0003.webp', 'group-one.png', 'group-two-2.png', 'group-two.png']);
+  await dataStore.deleteGalleryItem(item.id);
+});
+
+test('keeps large gallery originals and creates smaller WebP display copies', async () => {
   const temporaryPath = path.join(dataStore.paths.tmp, 'large-original.png');
   const original = Buffer.concat([png, Buffer.alloc(5 * 1024 * 1024)]);
   await writeFile(temporaryPath, original);
@@ -526,6 +652,34 @@ test('keeps gallery originals and creates WebP display copies above 5 MB', async
   assert.ok(display.length > 0);
   assert.ok(display.length < original.length);
   await dataStore.deleteGalleryItem(item.id);
+});
+
+test('backfills WebP display copies for existing original-only gallery items', async () => {
+  const temporaryPath = path.join(dataStore.paths.tmp, 'legacy-small.png');
+  await writeFile(temporaryPath, png);
+  const item = await dataStore.addGalleryItem({
+    temporaryPath,
+    originalFilename: 'legacy-small.png',
+    title: '旧画廊图片',
+    description: '',
+    width: 1,
+    height: 1,
+  });
+
+  await unlink(dataStore.galleryDisplayFilePath(item));
+  const index = JSON.parse(await readFile(dataStore.paths.gallery, 'utf8')) as { items: Array<Record<string, unknown> & { id: string; url: string }> };
+  const stored = index.items.find((candidate) => candidate.id === item.id)!;
+  delete stored.displayFilename;
+  stored.url = `/media/gallery/${item.id}/${encodeURIComponent(item.originalFilename)}`;
+  await writeFile(dataStore.paths.gallery, `${JSON.stringify(index, null, 2)}\n`);
+
+  const restarted = new DataStore(dataStore.paths.root);
+  await restarted.initialize();
+  const migrated = await restarted.getGalleryItem(item.id);
+  assert.equal(migrated?.displayFilename, 'display.webp');
+  assert.equal(migrated?.url, `/media/gallery/${item.id}/display.webp`);
+  assert.ok((await readFile(restarted.galleryDisplayFilePath(migrated!))).length > 0);
+  await restarted.deleteGalleryItem(item.id);
 });
 
 test('allocates unique gallery IDs for concurrent uploads', async () => {
@@ -584,8 +738,8 @@ test('updates gallery metadata without changing media fields', async () => {
     height: 1,
   });
 
-  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
-  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  const updated = await dataStore.updateGalleryItem(item.id, { title: '更新标题', description: '更新说明', category: '作品 / 插画 / 人物', tags: ['人物', '蓝色', '人物'], cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
+  assert.deepEqual(updated, { ...item, title: '更新标题', description: '更新说明', category: '作品/插画/人物', tags: ['人物', '蓝色'], cardFocus: { x: 0.2, y: 0.8, size: 0.6 }, cardAspectRatio: '3:4', thumbnailFocus: { x: 0.7, y: 0.3, size: 0.8 }, thumbnailAspectRatio: '16:9' });
   assert.equal((await dataStore.getGalleryItem(item.id))?.url, item.url);
   assert.equal((await dataStore.getGalleryItem(item.id))?.originalFilename, '原图.png');
   await dataStore.deleteGalleryItem(item.id);
@@ -594,7 +748,7 @@ test('updates gallery metadata without changing media fields', async () => {
 test('imports standalone Markdown as a normalized draft and avoids slug conflicts', async () => {
   const firstPath = path.join(dataStore.paths.tmp, 'standalone-one.md');
   const secondPath = path.join(dataStore.paths.tmp, 'standalone-two.md');
-  const source = `---\ntitle: Imported Article\nslug: welcome\nstatus: published\ndate: invalid\ntags: [test, test]\n---\n# Ignored Heading\n\nImported body.\n`;
+  const source = `---\ntitle: Imported Article\nslug: welcome\nstatus: published\ndate: invalid\ncategory: Imported\ntags: [test, test]\n---\n# Ignored Heading\n\nImported body.\n`;
   await writeFile(firstPath, source);
   await writeFile(secondPath, source);
 
@@ -603,6 +757,7 @@ test('imports standalone Markdown as a normalized draft and avoids slug conflict
   assert.equal(first.status, 'draft');
   assert.equal(first.slug, 'welcome-2');
   assert.equal(second.slug, 'welcome-3');
+  assert.equal(first.category, 'Imported');
   assert.deepEqual(first.tags, ['test']);
   assert.match(first.markdown, /Imported body/);
   assert.equal((await dataStore.postProjectListing(first.id))?.markdownRelativePath, 'article.md');
@@ -615,6 +770,7 @@ test('imports a draft with a version that supports immediate saves', async () =>
   await writeFile(file, '---\ntitle: Immediate Save\n---\n\nInitial body.\n');
   const imported = await importPostFile(file, 'immediate-save.md');
   assert.ok(imported.version);
+  assert.equal(imported.category, '未分类');
 
   const saved = await dataStore.savePost({ ...imported, markdown: `${imported.markdown}\n\nSaved immediately.` });
   assert.notEqual(saved.version, imported.version);
@@ -737,6 +893,20 @@ test('validates cross-platform gallery filenames without renaming safe names', (
     assert.throws(() => validateGalleryFilename(filename, 'image/png'), /文件名无效/);
   }
   assert.throws(() => validateGalleryFilename('photo.jpg', 'image/png'), /扩展名不一致/);
+});
+
+test('receives multiple gallery images in queue order', async () => {
+  const upload = await createGalleryUpload([
+    { name: 'first.png', source: png },
+    { name: 'second.png', source: png },
+  ]);
+  try {
+    assert.equal(upload.fields.title, '组合测试');
+    assert.deepEqual(upload.images.map((image) => image.originalFilename), ['first.png', 'second.png']);
+    assert.deepEqual(await Promise.all(upload.images.map((image) => readFile(image.temporaryPath))), [png, png]);
+  } finally {
+    await Promise.all(upload.images.map((image) => unlink(image.temporaryPath).catch(() => undefined)));
+  }
 });
 
 test('migrates legacy storage into article projects without changing security data', async () => {
@@ -1339,6 +1509,7 @@ test('validates customization boundaries', () => {
   assert.equal(migrated.galleryDescription, '项目、作品与视觉记录。');
   assert.equal(migrated.repositoryTitle, '仓库');
   assert.equal(migrated.repositoryDescription, '代码、工具与项目归档。');
+  assert.deepEqual(migrated.contentVisibility, { articles: true, gallery: true, repository: true });
   const current = settingsSchema.parse(settings);
   assert.equal(settingsSchema.safeParse({ ...current, footerMode: 'surface' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, galleryDescription: 'x'.repeat(241) }).success, false);
@@ -1348,6 +1519,8 @@ test('validates customization boundaries', () => {
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: '' }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(240) }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, repositoryDescription: 'x'.repeat(241) }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, contentVisibility: { ...current.contentVisibility, articles: false } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, contentVisibility: { ...current.contentVisibility, gallery: 'false' } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: 'https://example.com/avatar.png' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, webIcon: '/media/icon.svg' }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, profileAvatar: null, webIcon: null }).success, true);
@@ -1360,6 +1533,12 @@ test('validates customization boundaries', () => {
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, article: { ...current.browsing.article, contentWidth: 1100 } } }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, mediaWidth: 1101 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, portraitMaxHeight: 559 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 0 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 6 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, gridMaxColumns: 7 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 0 } } }).success, false);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 20 } } }).success, true);
+  assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, showcaseCardImageLimit: 21 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailColumns: 6 } } }).success, false);
   assert.equal(settingsSchema.safeParse({ ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, thumbnailRows: 4 } } }).success, true);
   assert.equal(settingsSchema.safeParse({ ...current, homeHero: { minHeight: 680, titleAlign: 'left', contentOffset: 0 }, browsing: current.browsing }).success, true);

@@ -4,7 +4,7 @@ import { galleryInputSchema, galleryOrderInputSchema, galleryUploadInputSchema, 
 import { requireAuth, requireWriteProtection } from '../auth.js';
 import { config } from '../config.js';
 import { dataStore } from '../dataStore.js';
-import { receiveImage } from '../media.js';
+import { receiveGalleryImages, receiveImage } from '../media.js';
 import { receivePostImport } from '../postImport.js';
 import { renderMarkdown } from '../markdown.js';
 import { receiveCodeTool, receiveCodeToolProject } from '../codeTools.js';
@@ -109,7 +109,7 @@ adminRouter.delete('/repository/code-tools/:id', requireWriteProtection, async (
 
 adminRouter.get('/posts', async (_req, res, next) => {
   try {
-    res.json(await dataStore.listPosts(true));
+    res.json((await dataStore.listPosts(true)).map(({ markdown: _markdown, version: _version, ...post }) => post));
   } catch (error) {
     next(error);
   }
@@ -210,9 +210,9 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
 adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   let temporaryPath: string | null = null;
   try {
-    const upload = await receiveImage(req, { fieldLimit: 11, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
+    const upload = await receiveImage(req, { fieldLimit: 14, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
     temporaryPath = upload.temporaryPath;
-    const input = galleryUploadInputSchema.parse(upload.fields);
+    const { coverIndex: _coverIndex, ...input } = galleryUploadInputSchema.parse(upload.fields);
     const item = await dataStore.addGalleryItem({
       ...input,
       temporaryPath: upload.temporaryPath,
@@ -224,6 +224,25 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
     res.status(201).json(item);
   } catch (error) {
     if (temporaryPath) await unlink(temporaryPath).catch(() => undefined);
+    next(error);
+  }
+});
+
+adminRouter.post('/gallery/group', requireWriteProtection, async (req, res, next) => {
+  let temporaryPaths: string[] = [];
+  try {
+    const upload = await receiveGalleryImages(req, { maximumFiles: 30, maximumBytes: config.galleryUploadLimit, fieldLimit: 14 });
+    temporaryPaths = upload.images.map((image) => image.temporaryPath);
+    const input = galleryUploadInputSchema.parse(upload.fields);
+    if (input.coverIndex >= upload.images.length) throw Object.assign(new Error('请选择有效的缩略图'), { status: 400 });
+    const item = await dataStore.addGalleryGroup({
+      ...input,
+      images: upload.images,
+    });
+    temporaryPaths = [];
+    res.status(201).json(item);
+  } catch (error) {
+    await Promise.all(temporaryPaths.map((temporaryPath) => unlink(temporaryPath).catch(() => undefined)));
     next(error);
   }
 });
@@ -240,12 +259,12 @@ adminRouter.put('/gallery/:id', requireWriteProtection, async (req, res, next) =
   try {
     const id = req.params.id;
     if (typeof id !== 'string') {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     const item = await dataStore.updateGalleryItem(id, galleryInputSchema.parse(req.body));
     if (!item) {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     res.json(item);
@@ -258,12 +277,12 @@ adminRouter.delete('/gallery/:id', requireWriteProtection, async (req, res, next
   try {
     const id = req.params.id;
     if (typeof id !== 'string') {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     const item = await dataStore.deleteGalleryItem(id);
     if (!item) {
-      res.status(404).json({ error: '图片不存在' });
+      res.status(404).json({ error: '画廊展示不存在' });
       return;
     }
     res.status(204).end();
@@ -286,7 +305,8 @@ adminRouter.post('/settings/media/:kind', requireWriteProtection, async (req, re
       res.status(400).json({ error: '媒体类型无效' });
       return;
     }
-    const upload = await receiveImage(req);
+    const variant = kind === 'profileAvatar' ? 'avatar' : kind === 'webIcon' ? 'icon' : 'background';
+    const upload = await receiveImage(req, { variant });
     const current = await dataStore.readSettings();
     const nextSettings = key === 'repositoryAppearance.backgroundImage'
       ? { ...current, repositoryAppearance: { ...current.repositoryAppearance, backgroundImage: upload.url } }

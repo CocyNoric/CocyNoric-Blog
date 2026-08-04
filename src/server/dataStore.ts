@@ -4,14 +4,14 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import writeFileAtomic from 'write-file-atomic';
 import sharp from 'sharp';
-import { codeToolsIndexSchema, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
+import { codeToolsIndexSchema, defaultContentVisibility, defaultRepositoryAppearance, galleryIndexSchema, galleryInputSchema, galleryItemSchema, galleryOrderInputSchema, legacyCodeToolsIndexSchema, migrateSettings, postInputSchema, postMetaSchema, type CodeToolItem, type CodeToolProject, type CodeToolProjectFile, type CodeToolsIndex, type GalleryIndex, type GalleryInput, type GalleryItem, type GalleryMedia, type PostInput, type PostMeta, type SiteSettings } from '../shared/schemas.js';
 import type { AdminPost } from '../shared/types.js';
 import { config } from './config.js';
 import { migrateStorageLayout, type StoragePaths } from './storageMigration.js';
 import { validateCodeToolProjectPath, codeToolPathError } from './codeToolPaths.js';
 
 const defaultSettings: SiteSettings = {
-  version: 10,
+  version: 11,
   siteName: "CocyNoric's Blog",
   homeTitle: "CocyNoric's Blog",
   footerText: "CocyNoric's Blog",
@@ -19,6 +19,7 @@ const defaultSettings: SiteSettings = {
   repositoryTitle: '仓库',
   repositoryDescription: '代码、工具与项目归档。',
   repositoryAppearance: defaultRepositoryAppearance,
+  contentVisibility: defaultContentVisibility,
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,
@@ -58,6 +59,8 @@ const defaultSettings: SiteSettings = {
     gallery: {
       railSide: 'right',
       railWidth: 340,
+      gridMaxColumns: 3,
+      showcaseCardImageLimit: 5,
       showRecentPosts: true,
       recentPostsLimit: 4,
       showRecentGallery: true,
@@ -77,6 +80,7 @@ const starterPosts: Array<Omit<PostInput, 'version'>> = [
     excerpt: '这是一个支持 Markdown、LaTeX 和自定义主题的个人空间。',
     date: '2026-07-16',
     status: 'published',
+    category: '随笔',
     tags: ['随笔'],
     markdown: `这里可以记录技术、展示项目，也可以写下日常想法。\n\n## Markdown 与公式\n\n文章支持常用的 Markdown 语法，也能渲染行内公式 $E = mc^2$。\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\n登录管理后台后，可以直接编辑这篇文章或创建新内容。`,
   },
@@ -86,6 +90,7 @@ const starterPosts: Array<Omit<PostInput, 'version'>> = [
     excerpt: '记录一次从实际问题出发，逐步缩小实现范围的过程。',
     date: '2026-07-12',
     status: 'published',
+    category: '技术',
     tags: ['技术', '工程'],
     markdown: `复杂并不等于完整。一个工具真正有用，通常因为它把最重要的路径做得足够清楚。\n\n## 先确认唯一任务\n\n在增加功能前，先写下用户打开它时最需要完成的一件事。其余功能都要为这条路径让路。\n\n## 保留可修改的边界\n\n小工具也需要清晰的数据格式、可替换的配置和可验证的输出，但不需要为尚未出现的问题提前搭建框架。`,
   },
@@ -95,6 +100,7 @@ const starterPosts: Array<Omit<PostInput, 'version'>> = [
     excerpt: '一份简短的项目记录模板，关注目标、限制和最终取舍。',
     date: '2026-07-08',
     status: 'published',
+    category: '项目',
     tags: ['展示', '项目'],
     markdown: `项目展示不只是结果截图，也应该说明为什么这样做。\n\n- **目标**：解决什么具体问题\n- **限制**：时间、设备或环境带来了什么约束\n- **取舍**：哪些方案被放弃，为什么\n- **结果**：现在能完成什么，还有什么未验证\n\n把这些内容写清楚，比堆叠功能列表更容易让读者理解作品。`,
   },
@@ -137,12 +143,27 @@ type PostStorageAsset = {
   relativePath: string;
 };
 
+type GalleryImageUpload = {
+  temporaryPath: string;
+  originalFilename: string;
+  width?: number;
+  height?: number;
+};
+
+type GalleryMetadataInput = Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'category' | 'tags' | 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning'>>;
+
 type LocatedPost = {
   post: AdminPost;
   filePath: string;
   projectRoot: string;
   projectName: string;
   markdownRelativePath: string;
+};
+
+type FileCache<T> = {
+  mtimeMs: number;
+  size: number;
+  value: T;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,6 +185,7 @@ function mergeSettings(current: SiteSettings, input: unknown) {
   };
 
   mergeNested('repositoryAppearance', current.repositoryAppearance);
+  mergeNested('contentVisibility', current.contentVisibility);
   mergeNested('homeContent', current.homeContent);
   mergeNested('homeHero', current.homeHero);
 
@@ -199,6 +221,10 @@ export class DataStore {
   private postMutation = Promise.resolve();
   private codeToolsMutation = Promise.resolve();
   private initialization: Promise<void> | null = null;
+  private settingsCache: FileCache<SiteSettings> | null = null;
+  private galleryCache: FileCache<GalleryIndex> | null = null;
+  private postFileCache = new Map<string, FileCache<AdminPost>>();
+  private postsRead: Promise<LocatedPost[]> | null = null;
 
   constructor(dataDir = config.dataDir) {
     const repository = path.join(dataDir, 'repository');
@@ -244,10 +270,18 @@ export class DataStore {
   }
 
   async readSettings() {
+    let details = await stat(this.paths.settings);
+    if (this.settingsCache?.mtimeMs === details.mtimeMs && this.settingsCache.size === details.size) {
+      return structuredClone(this.settingsCache.value);
+    }
     const raw = JSON.parse(await readFile(this.paths.settings, 'utf8')) as unknown;
     const settings = migrateSettings(raw);
-    if (JSON.stringify(raw) !== JSON.stringify(settings)) await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
-    return settings;
+    if (JSON.stringify(raw) !== JSON.stringify(settings)) {
+      await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
+      details = await stat(this.paths.settings);
+    }
+    this.settingsCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(settings) };
+    return structuredClone(settings);
   }
 
   private mutateSettings<T>(mutation: () => Promise<T>) {
@@ -263,7 +297,9 @@ export class DataStore {
         : migrateSettings(defaultSettings);
       const settings = migrateSettings(mergeSettings(current, input));
       await this.atomicWrite(this.paths.settings, `${JSON.stringify(settings, null, 2)}\n`);
-      return settings;
+      const details = await stat(this.paths.settings);
+      this.settingsCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(settings) };
+      return structuredClone(settings);
     });
   }
 
@@ -543,12 +579,21 @@ export class DataStore {
   }
 
   private async readGalleryIndex() {
+    const details = await stat(this.paths.gallery);
+    if (this.galleryCache?.mtimeMs === details.mtimeMs && this.galleryCache.size === details.size) {
+      return structuredClone(this.galleryCache.value);
+    }
     const value = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
-    return galleryIndexSchema.parse(value);
+    const index = galleryIndexSchema.parse(value);
+    this.galleryCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(index) };
+    return structuredClone(index);
   }
 
   private async writeGalleryIndex(index: GalleryIndex) {
-    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(galleryIndexSchema.parse(index), null, 2)}\n`);
+    const parsed = galleryIndexSchema.parse(index);
+    await this.atomicWrite(this.paths.gallery, `${JSON.stringify(parsed, null, 2)}\n`);
+    const details = await stat(this.paths.gallery);
+    this.galleryCache = { mtimeMs: details.mtimeMs, size: details.size, value: structuredClone(parsed) };
   }
 
   private mutateGallery<T>(mutation: () => Promise<T>) {
@@ -565,9 +610,9 @@ export class DataStore {
     const input = galleryOrderInputSchema.parse(raw);
     return this.mutateGallery(async () => {
       const index = await this.readGalleryIndex();
-      if (input.ids.length !== index.items.length) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      if (input.ids.length !== index.items.length) throw Object.assign(new Error('画廊列表已变化，请刷新后重试'), { code: 'CONFLICT' });
       const byId = new Map(index.items.map((item) => [item.id, item]));
-      if (input.ids.some((id) => !byId.has(id))) throw Object.assign(new Error('图片列表已变化，请刷新后重试'), { code: 'CONFLICT' });
+      if (input.ids.some((id) => !byId.has(id))) throw Object.assign(new Error('画廊列表已变化，请刷新后重试'), { code: 'CONFLICT' });
       const items = input.ids.map((id) => byId.get(id)!);
       await this.writeGalleryIndex({ ...index, items });
       return items;
@@ -586,14 +631,36 @@ export class DataStore {
     return path.join(this.paths.galleryRoot, item.id, item.displayFilename ?? item.originalFilename);
   }
 
+  galleryMediaFilePath(item: Pick<GalleryItem, 'id'>, image: Pick<GalleryMedia, 'originalFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, image.originalFilename);
+  }
+
+  galleryMediaDisplayFilePath(item: Pick<GalleryItem, 'id'>, image: Pick<GalleryMedia, 'originalFilename' | 'displayFilename'>) {
+    return path.join(this.paths.galleryRoot, item.id, image.displayFilename ?? image.originalFilename);
+  }
+
   private galleryDisplayFilename(originalFilename: string) {
     return originalFilename.toLocaleLowerCase('en-US') === 'display.webp' ? 'display-compressed.webp' : 'display.webp';
+  }
+
+  private uniqueGalleryFilename(filename: string, occupied: Set<string>) {
+    const extension = path.extname(filename);
+    const stem = path.basename(filename, extension);
+    let candidate = filename;
+    let suffix = 2;
+    while (occupied.has(candidate.toLocaleLowerCase('en-US'))) candidate = `${stem}-${suffix++}${extension}`;
+    occupied.add(candidate.toLocaleLowerCase('en-US'));
+    return candidate;
   }
 
   private async writeGalleryDisplayFile(source: string, destination: string) {
     const temporary = `${destination}.${randomUUID()}.tmp`;
     try {
-      await sharp(source).keepMetadata().webp({ quality: 82, effort: 4 }).toFile(temporary);
+      await sharp(source)
+        .rotate()
+        .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82, effort: 4, smartSubsample: true })
+        .toFile(temporary);
       await rename(temporary, destination);
     } catch (error) {
       await unlink(temporary).catch(() => undefined);
@@ -603,61 +670,174 @@ export class DataStore {
 
   private async ensureGalleryDisplayFiles() {
     await this.mutateGallery(async () => {
-      const index = await this.readGalleryIndex();
-      let changed = false;
+      const displayMigrationMarker = path.join(this.paths.galleryRoot, '.display-v2');
+      const refreshExisting = !(await this.exists(displayMigrationMarker));
+      const raw = JSON.parse(await readFile(this.paths.gallery, 'utf8')) as unknown;
+      const index = galleryIndexSchema.parse(raw);
+      let changed = JSON.stringify(raw) !== JSON.stringify(index);
       for (const item of index.items) {
-        const original = this.galleryFilePath(item);
-        if ((await stat(original)).size <= config.compressionThreshold) continue;
-        const displayFilename = item.displayFilename ?? this.galleryDisplayFilename(item.originalFilename);
-        const display = path.join(this.paths.galleryRoot, item.id, displayFilename);
-        if (!(await this.exists(display))) await this.writeGalleryDisplayFile(original, display);
-        const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
-        if (item.displayFilename !== displayFilename || item.url !== expectedUrl) {
-          item.displayFilename = displayFilename;
-          item.url = expectedUrl;
+        const occupied = new Set(item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US')));
+        for (const image of item.images) {
+          const original = this.galleryMediaFilePath(item, image);
+          const preferredDisplayFilename = item.images.length === 1
+            ? this.galleryDisplayFilename(image.originalFilename)
+            : `display-${image.mediaId}.webp`;
+          let displayFilename = image.displayFilename ?? this.uniqueGalleryFilename(preferredDisplayFilename, occupied);
+          let display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+          let displayExists = await this.exists(display);
+          if (refreshExisting && displayExists) {
+            const currentIsV2 = /^display-v2(?:-|\.)/i.test(displayFilename);
+            if (!currentIsV2 || await this.galleryDisplayNeedsRefresh(display)) {
+              const migratedFilename = item.images.length === 1 ? 'display-v2.webp' : `display-v2-${image.mediaId}.webp`;
+              displayFilename = this.uniqueGalleryFilename(migratedFilename, occupied);
+              display = path.join(this.paths.galleryRoot, item.id, displayFilename);
+              displayExists = await this.exists(display);
+            }
+          }
+          if (!displayExists) await this.writeGalleryDisplayFile(original, display);
+          const expectedUrl = `/media/gallery/${item.id}/${encodeURIComponent(displayFilename)}`;
+          if (image.displayFilename !== displayFilename || image.url !== expectedUrl) {
+            image.displayFilename = displayFilename;
+            image.url = expectedUrl;
+            changed = true;
+          }
+        }
+        const cover = item.images.find((image) => image.mediaId === item.coverImageId) ?? item.images[0];
+        if (
+          item.coverImageId !== cover.mediaId
+          || item.originalFilename !== cover.originalFilename
+          || item.displayFilename !== cover.displayFilename
+          || item.url !== cover.url
+          || item.width !== cover.width
+          || item.height !== cover.height
+        ) {
+          item.coverImageId = cover.mediaId;
+          item.originalFilename = cover.originalFilename;
+          item.displayFilename = cover.displayFilename;
+          item.url = cover.url;
+          item.width = cover.width;
+          item.height = cover.height;
           changed = true;
         }
       }
       if (changed) await this.writeGalleryIndex(index);
+      if (refreshExisting) await this.atomicWrite(displayMigrationMarker, '1');
+      const cleanupMarker = path.join(this.paths.galleryRoot, '.display-v2-cleanup');
+      if (!(await this.exists(cleanupMarker)) && await this.cleanupUnreferencedGalleryDisplays(index)) {
+        await this.atomicWrite(cleanupMarker, '1');
+      }
     });
   }
 
-  async addGalleryItem(input: Pick<GalleryItem, 'title' | 'description'> & Partial<Pick<GalleryItem, 'cardFocus' | 'cardAspectRatio' | 'thumbnailFocus' | 'thumbnailAspectRatio' | 'cropPositioning' | 'width' | 'height'>> & { temporaryPath: string; originalFilename: string }) {
-    return this.mutateGallery(async () => {
-      const index = await this.readGalleryIndex();
-      const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
-      const occupied = entries
-        .filter((entry) => entry.isDirectory() && /^\d{8}$/.test(entry.name))
-        .map((entry) => Number(entry.name));
-      const sequence = Math.max(index.nextId, occupied.length ? Math.max(...occupied) + 1 : 1);
-      if (sequence > 99_999_999) throw new Error('画廊 ID 已用尽');
-
-      const id = String(sequence).padStart(8, '0');
-      const directory = path.join(this.paths.galleryRoot, id);
-      const destination = path.join(directory, input.originalFilename);
-      await mkdir(directory, { mode: 0o700 });
-      await rename(input.temporaryPath, destination);
-
-      try {
-        const compress = (await stat(destination)).size > config.compressionThreshold;
-        const displayFilename = compress ? this.galleryDisplayFilename(input.originalFilename) : undefined;
-        if (displayFilename) await this.writeGalleryDisplayFile(destination, path.join(directory, displayFilename));
-        const item = galleryItemSchema.parse({
-          ...input,
-          temporaryPath: undefined,
-          id,
-          ...(displayFilename ? { displayFilename } : {}),
-          url: `/media/gallery/${id}/${encodeURIComponent(displayFilename ?? input.originalFilename)}`,
-          createdAt: new Date().toISOString(),
-        });
-        await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
-        return item;
-      } catch (error) {
-        await rename(destination, input.temporaryPath).catch(() => undefined);
-        await rm(directory, { recursive: true, force: true }).catch(() => undefined);
-        throw error;
+  private async cleanupUnreferencedGalleryDisplays(index: GalleryIndex) {
+    let complete = true;
+    for (const item of index.items) {
+      const referenced = new Set(item.images.flatMap((image) => [image.originalFilename, image.displayFilename].filter((value): value is string => Boolean(value))).map((value) => value.toLocaleLowerCase('en-US')));
+      const directory = path.join(this.paths.galleryRoot, item.id);
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isFile() || !/^display(?:-.+)?\.webp$/i.test(entry.name) || referenced.has(entry.name.toLocaleLowerCase('en-US'))) continue;
+        try {
+          await unlink(path.join(directory, entry.name));
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== 'EBUSY' && code !== 'EPERM') throw error;
+          complete = false;
+        }
       }
+    }
+    return complete;
+  }
+
+  private async addGalleryGroupUnlocked(input: GalleryMetadataInput & { images: GalleryImageUpload[]; coverIndex: number }) {
+    if (input.images.length < 1 || input.images.length > 30) throw Object.assign(new Error('一个画廊条目需要包含 1 到 30 张图片'), { status: 400 });
+    if (input.coverIndex < 0 || input.coverIndex >= input.images.length) throw Object.assign(new Error('请选择有效的缩略图'), { status: 400 });
+
+    const index = await this.readGalleryIndex();
+    const entries = await readdir(this.paths.galleryRoot, { withFileTypes: true });
+    const occupiedIds = entries
+      .filter((entry) => entry.isDirectory() && /^\d{8}$/.test(entry.name))
+      .map((entry) => Number(entry.name));
+    const sequence = Math.max(index.nextId, occupiedIds.length ? Math.max(...occupiedIds) + 1 : 1);
+    if (sequence > 99_999_999) throw new Error('画廊 ID 已用尽');
+
+    const id = String(sequence).padStart(8, '0');
+    const directory = path.join(this.paths.galleryRoot, id);
+    const occupiedFilenames = new Set<string>();
+    const moved: Array<{ source: string; destination: string }> = [];
+    await mkdir(directory, { mode: 0o700 });
+
+    try {
+      const originals = [] as Array<GalleryImageUpload & { mediaId: string; storedFilename: string }>;
+      for (const [imageIndex, upload] of input.images.entries()) {
+        if (path.basename(upload.originalFilename) !== upload.originalFilename || !upload.originalFilename) {
+          throw Object.assign(new Error('图片文件名无效'), { status: 400 });
+        }
+        const storedFilename = this.uniqueGalleryFilename(upload.originalFilename, occupiedFilenames);
+        const destination = path.join(directory, storedFilename);
+        await rename(upload.temporaryPath, destination);
+        moved.push({ source: upload.temporaryPath, destination });
+        originals.push({ ...upload, mediaId: String(imageIndex + 1).padStart(4, '0'), storedFilename });
+      }
+
+      const images: GalleryMedia[] = [];
+      for (const original of originals) {
+        const preferredDisplayFilename = originals.length === 1
+          ? this.galleryDisplayFilename(original.storedFilename)
+          : `display-${original.mediaId}.webp`;
+        const displayFilename = this.uniqueGalleryFilename(preferredDisplayFilename, occupiedFilenames);
+        await this.writeGalleryDisplayFile(path.join(directory, original.storedFilename), path.join(directory, displayFilename));
+        images.push({
+          mediaId: original.mediaId,
+          originalFilename: original.storedFilename,
+          displayFilename,
+          url: `/media/gallery/${id}/${encodeURIComponent(displayFilename)}`,
+          width: original.width,
+          height: original.height,
+        });
+      }
+
+      const cover = images[input.coverIndex];
+      const { images: _uploads, coverIndex: _coverIndex, ...metadata } = input;
+      const item = galleryItemSchema.parse({
+        ...metadata,
+        id,
+        coverImageId: cover.mediaId,
+        originalFilename: cover.originalFilename,
+        displayFilename: cover.displayFilename,
+        url: cover.url,
+        width: cover.width,
+        height: cover.height,
+        images,
+        createdAt: new Date().toISOString(),
+      });
+      await this.writeGalleryIndex({ version: 1, nextId: sequence + 1, items: [item, ...index.items] });
+      return item;
+    } catch (error) {
+      for (const file of [...moved].reverse()) await rename(file.destination, file.source).catch(() => undefined);
+      await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async galleryDisplayNeedsRefresh(filePath: string) {
+    try {
+      const metadata = await sharp(filePath).metadata();
+      return metadata.format !== 'webp' || (metadata.width ?? 0) > 2560 || (metadata.height ?? 0) > 2560;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      throw error;
+    }
+  }
+
+  async addGalleryItem(input: GalleryMetadataInput & GalleryImageUpload) {
+    return this.mutateGallery(async () => {
+      const { temporaryPath, originalFilename, width, height, ...metadata } = input;
+      return this.addGalleryGroupUnlocked({ ...metadata, images: [{ temporaryPath, originalFilename, width, height }], coverIndex: 0 });
     });
+  }
+
+  async addGalleryGroup(input: GalleryMetadataInput & { images: GalleryImageUpload[]; coverIndex: number }) {
+    return this.mutateGallery(() => this.addGalleryGroupUnlocked(input));
   }
 
   async updateGalleryItem(id: string, raw: GalleryInput) {
@@ -667,12 +847,28 @@ export class DataStore {
       const itemIndex = index.items.findIndex((candidate) => candidate.id === id || candidate.legacyId === id);
       if (itemIndex < 0) return null;
       const current = index.items[itemIndex];
-      const item = galleryItemSchema.parse({ ...current, ...input });
-      const transitionsToCenteredCrop = current.cropPositioning === 'legacy' && input.cropPositioning === 'center';
-      if ((transitionsToCenteredCrop || input.cardAspectRatio === 'original' || input.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
-        const metadata = await sharp(this.galleryFilePath(item)).metadata();
-        item.width = metadata.width;
-        item.height = metadata.height;
+      const { imageOrder, ...metadata } = input;
+      let images = current.images;
+      if (imageOrder) {
+        const imageById = new Map(current.images.map((image) => [image.mediaId, image]));
+        if (imageOrder.length !== current.images.length || imageOrder.some((mediaId) => !imageById.has(mediaId))) {
+          throw Object.assign(new Error('图片排序必须完整包含当前画廊的所有图片'), { status: 400 });
+        }
+        images = imageOrder.map((mediaId) => imageById.get(mediaId)!);
+      }
+      if (metadata.coverImageId && !images.some((image) => image.mediaId === metadata.coverImageId)) {
+        throw Object.assign(new Error('选择的缩略图不存在'), { status: 400 });
+      }
+      if (imageOrder && metadata.coverImageId && metadata.coverImageId !== imageOrder[0]) {
+        throw Object.assign(new Error('缩略图必须是排序后的第一张图片'), { status: 400 });
+      }
+      const coverImageId = imageOrder?.[0] ?? metadata.coverImageId ?? current.coverImageId;
+      let item = galleryItemSchema.parse({ ...current, ...metadata, images, coverImageId });
+      const transitionsToCenteredCrop = current.cropPositioning === 'legacy' && metadata.cropPositioning === 'center';
+      if ((transitionsToCenteredCrop || metadata.cardAspectRatio === 'original' || metadata.thumbnailAspectRatio === 'original') && (!item.width || !item.height)) {
+        const imageMetadata = await sharp(this.galleryFilePath(item)).metadata();
+        const nextImages = item.images.map((image) => image.mediaId === item.coverImageId ? { ...image, width: imageMetadata.width, height: imageMetadata.height } : image);
+        item = galleryItemSchema.parse({ ...item, images: nextImages });
       }
       index.items[itemIndex] = item;
       await this.writeGalleryIndex(index);
@@ -698,37 +894,59 @@ export class DataStore {
   }
 
   private async articleMarkdownFiles(directory = this.paths.markdown, relativeDirectory = ''): Promise<string[]> {
-    const files: string[] = [];
     const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!relativeDirectory && (entry.name.startsWith('.') || entry.name === 'posts' || entry.name === 'media')) continue;
+    const files = await Promise.all(entries.map(async (entry): Promise<string[]> => {
+      if (!relativeDirectory && (entry.name.startsWith('.') || entry.name === 'posts' || entry.name === 'media')) return [];
       const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       const filePath = path.join(directory, entry.name);
-      if (entry.isDirectory()) files.push(...await this.articleMarkdownFiles(filePath, relativePath));
-      else if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) files.push(relativePath);
-    }
-    return files;
+      if (entry.isDirectory()) return this.articleMarkdownFiles(filePath, relativePath);
+      if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) return [relativePath];
+      return [];
+    }));
+    return files.flat();
   }
 
-  private async locatedPosts(): Promise<LocatedPost[]> {
-    const located: LocatedPost[] = [];
-    for (const relativePath of await this.articleMarkdownFiles()) {
+  private async readLocatedPosts(): Promise<LocatedPost[]> {
+    const relativePaths = await this.articleMarkdownFiles();
+    const activeFiles = new Set(relativePaths.map((relativePath) => path.join(this.paths.markdown, ...relativePath.split('/'))));
+    const located = await Promise.all(relativePaths.map(async (relativePath): Promise<LocatedPost | null> => {
       const [projectName, ...projectPath] = relativePath.split('/');
-      if (!projectName || !projectPath.length) continue;
+      if (!projectName || !projectPath.length) return null;
       const filePath = path.join(this.paths.markdown, ...relativePath.split('/'));
       try {
-        located.push({
-          post: await this.readPostFile(filePath),
+        const details = await stat(filePath);
+        const cached = this.postFileCache.get(filePath);
+        const post = cached?.mtimeMs === details.mtimeMs && cached.size === details.size
+          ? cached.value
+          : await this.readPostFile(filePath);
+        if (post !== cached?.value) this.postFileCache.set(filePath, { mtimeMs: details.mtimeMs, size: details.size, value: post });
+        return {
+          post,
           filePath,
           projectRoot: path.join(this.paths.markdown, projectName),
           projectName,
           markdownRelativePath: projectPath.join('/'),
-        });
+        };
       } catch (error) {
         console.error(`无法读取文章 ${relativePath}:`, error);
+        return null;
       }
+    }));
+    for (const filePath of this.postFileCache.keys()) {
+      if (!activeFiles.has(filePath)) this.postFileCache.delete(filePath);
     }
-    return located;
+    return located.filter((entry): entry is LocatedPost => entry !== null);
+  }
+
+  private async locatedPosts(): Promise<LocatedPost[]> {
+    if (this.postsRead) return this.postsRead;
+    const pending = this.readLocatedPosts();
+    this.postsRead = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.postsRead === pending) this.postsRead = null;
+    }
   }
 
   private async locatePostById(id: string) {
@@ -813,6 +1031,7 @@ export class DataStore {
         date: input.date,
         updatedAt: new Date().toISOString(),
         status: input.status,
+        category: input.category,
         tags: [...new Set(input.tags)],
       });
       const source = matter.stringify(input.markdown.trimEnd() + '\n', meta);
@@ -825,6 +1044,7 @@ export class DataStore {
           await rename(asset.temporaryPath, destination);
         }
         await this.atomicWrite(target, source);
+        this.postFileCache.delete(target);
         return this.readPostFile(target);
       } catch (error) {
         if (isNew) await rm(projectRoot, { recursive: true, force: true }).catch(() => undefined);
@@ -885,6 +1105,9 @@ export class DataStore {
       const located = await this.locatePostById(id);
       if (!located) return false;
       await rm(located.projectRoot, { recursive: true, force: true });
+      for (const filePath of this.postFileCache.keys()) {
+        if (filePath === located.projectRoot || filePath.startsWith(`${located.projectRoot}${path.sep}`)) this.postFileCache.delete(filePath);
+      }
       return true;
     });
   }
@@ -911,7 +1134,7 @@ export class DataStore {
 
   private async exists(filePath: string) {
     try {
-      await readFile(filePath);
+      await lstat(filePath);
       return true;
     } catch (error) {
       return (error as NodeJS.ErrnoException).code !== 'ENOENT' ? Promise.reject(error) : false;
