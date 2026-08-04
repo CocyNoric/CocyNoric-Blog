@@ -9,9 +9,10 @@ type ListingInfoRailProps = {
   categories?: CategorySummary[];
   activeCategory?: string;
   onCategoryChange?: (category: string) => void;
+  filterLabel?: '分类' | '标签';
 };
 
-export function ListingInfoRail({ kind, total, visible = total, context = '', categories = [], activeCategory = '', onCategoryChange }: ListingInfoRailProps) {
+export function ListingInfoRail({ kind, total, visible = total, context = '', categories = [], activeCategory = '', onCategoryChange, filterLabel = '分类' }: ListingInfoRailProps) {
   const article = kind === 'article';
   return <div className="listing-info-rail-content">
     <div className="listing-rail-heading">
@@ -24,9 +25,9 @@ export function ListingInfoRail({ kind, total, visible = total, context = '', ca
     </p>
     {context && <div className="listing-rail-context"><span>当前范围</span><strong>{context}</strong></div>}
     {categories.length > 0 && <div className="listing-rail-reserved">
-      <span className="showcase-info-label">Categories</span>
-      <strong>分类</strong>
-      <div className="listing-rail-categories" aria-label="按分类筛选">
+      <span className="showcase-info-label">{filterLabel === '标签' ? 'Tags' : 'Categories'}</span>
+      <strong>{filterLabel}</strong>
+      <div className="listing-rail-categories" aria-label={`按${filterLabel}筛选`}>
         <button type="button" aria-pressed={!activeCategory} onClick={() => onCategoryChange?.('')}><span>全部</span><small>{total}</small></button>
         {categories.map((category) => <button
           type="button"

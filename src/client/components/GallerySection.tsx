@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
-import { categoryDisplayName, categoryIncludes, summarizeCategoryPaths } from '../../shared/categories.js';
+import { galleryIncludesTag, summarizeGalleryTags } from '../../shared/galleryTags.js';
 import type { ListingViewMode } from '../listingView.js';
 import { ArrowIcon } from './Icons.js';
 import { GalleryShowcase } from './ContentShowcase.js';
@@ -33,15 +33,16 @@ export function GallerySection({ items, loading, error = '', headingLevel = 'h2'
   const normalizedGridMaxColumns = Math.min(6, Math.max(1, Math.trunc(gridMaxColumns)));
   const normalizedShowcaseCardImageLimit = Math.min(20, Math.max(1, Math.trunc(showcaseCardImageLimit)));
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeCategory = limit === undefined ? searchParams.get('category') ?? '' : '';
-  const categories = useMemo(() => summarizeCategoryPaths(items.map((item) => item.category)), [items]);
-  const filteredItems = useMemo(() => items.filter((item) => categoryIncludes(item.category, activeCategory)), [items, activeCategory]);
-  const updateCategory = (category: string) => {
+  const activeTag = limit === undefined ? searchParams.get('tag') ?? searchParams.get('category') ?? '' : '';
+  const tagFilters = useMemo(() => summarizeGalleryTags(items).map((summary) => ({ path: summary.tag, label: summary.tag, depth: 0, count: summary.count })), [items]);
+  const filteredItems = useMemo(() => items.filter((item) => galleryIncludesTag(item, activeTag)), [items, activeTag]);
+  const updateTag = (tag: string) => {
     const next = new URLSearchParams(searchParams);
-    if (category) next.set('category', category); else next.delete('category');
+    next.delete('category');
+    if (tag) next.set('tag', tag); else next.delete('tag');
     setSearchParams(next, { replace: true });
   };
-  const galleryRail = <ListingInfoRail kind="gallery" total={items.length} visible={filteredItems.length} context={activeCategory ? `分类：${categoryDisplayName(activeCategory)}` : '全部画廊'} categories={categories} activeCategory={activeCategory} onCategoryChange={updateCategory} />;
+  const galleryRail = <ListingInfoRail kind="gallery" total={items.length} visible={filteredItems.length} context={activeTag ? `标签：${activeTag}` : '全部画廊'} categories={tagFilters} activeCategory={activeTag} onCategoryChange={updateTag} filterLabel="标签" />;
   const galleryGrid = <div className={`gallery-grid${normalizedGridMaxColumns === 1 ? ' gallery-grid-single-column' : ''}`} style={{ '--gallery-grid-columns': normalizedGridMaxColumns } as CSSProperties}>{(limit === undefined ? filteredItems : filteredItems.slice(0, limit)).map((item) => <GalleryCard item={item} key={item.id} />)}</div>;
 
   return <section id="gallery" className={`content-section gallery-section${surfaceOpacity === undefined ? '' : ' home-surface'}`} aria-labelledby="gallery-heading" style={surfaceOpacity === undefined ? undefined : { '--surface-opacity': surfaceOpacity } as CSSProperties}>
@@ -62,7 +63,7 @@ export function GallerySection({ items, loading, error = '', headingLevel = 'h2'
           : viewMode && limit === undefined
             ? <ListingRailStage rail={galleryRail} railOpen={railOpen} railLabel="画廊浏览信息">{galleryGrid}</ListingRailStage>
             : galleryGrid)
-        : <div className="gallery-empty">{items.length > 0 ? '当前分类还没有画廊展示。' : '画廊还没有展示内容。'}</div>)}
+        : <div className="gallery-empty">{items.length > 0 ? '当前标签还没有画廊展示。' : '画廊还没有展示内容。'}</div>)}
     {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>View more<ArrowIcon /></Link></div>}
   </section>;
 }

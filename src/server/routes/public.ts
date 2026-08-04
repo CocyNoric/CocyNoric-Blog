@@ -4,6 +4,7 @@ import { renderMarkdown } from '../markdown.js';
 import { createThemeTokens } from '../theme.js';
 import { matchesGalleryTitle } from '../../shared/search.js';
 import { categoryIncludes } from '../../shared/categories.js';
+import { galleryIncludesTag } from '../../shared/galleryTags.js';
 import { serveCodeToolDownload, serveCodeToolProjectArchiveDownload, serveCodeToolProjectDownload } from '../codeTools.js';
 import { repositoryOverview, repositoryTree } from '../repositoryStore.js';
 import { archiveCapacityGuard, archiveDownloadLimiter } from '../archiveProtection.js';
@@ -68,9 +69,10 @@ publicRouter.get('/settings', async (_req, res, next) => {
 publicRouter.get('/gallery', async (req, res, next) => {
   try {
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const tag = typeof req.query.tag === 'string' ? req.query.tag : '';
     const category = typeof req.query.category === 'string' ? req.query.category : '';
     const items = await dataStore.listGallery();
-    res.json(items.filter((item) => categoryIncludes(item.category, category) && (!query || matchesGalleryTitle(item.title, query))));
+    res.json(items.filter((item) => (tag ? galleryIncludesTag(item, tag) : categoryIncludes(item.category, category)) && (!query || matchesGalleryTitle(item.title, query))));
   } catch (error) {
     next(error);
   }
