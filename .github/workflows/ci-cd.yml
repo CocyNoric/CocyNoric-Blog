@@ -1,0 +1,220 @@
+name: CI and CD
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Enforce the dev to main promotion path
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [[ "$HEAD_BRANCH" != "dev" || "$HEAD_REPOSITORY" != "$TARGET_REPOSITORY" ]]; then
+            echo "Pull requests into main must come from this repository's dev branch." >&2
+            echo "Received: $HEAD_REPOSITORY:$HEAD_BRANCH" >&2
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify that main was promoted by merging dev
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          git rev-parse --verify refs/remotes/origin/dev >/dev/null
+          read -r -a parents <<<"$(git show --no-patch --format=%P "$GITHUB_SHA")"
+          if (( ${#parents[@]} < 2 )); then
+            echo "Updates to main must be merge commits promoted from dev." >&2
+            exit 1
+          fi
+
+          promoted_from_dev=false
+          for parent in "${parents[@]:1}"; do
+            if git merge-base --is-ancestor "$parent" refs/remotes/origin/dev; then
+              promoted_from_dev=true
+              break
+            fi
+          done
+          if [[ "$promoted_from_dev" != true ]]; then
+            echo "No merge parent belongs to dev history; refusing release." >&2
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build application
+        run: npm run build
+
+  image:
+    name: Build image
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU for the production multi-platform image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve lowercase image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=CocyNoric Blog
+            org.opencontainers.image.description=Self-hosted Material Design 3 blog
+
+      - name: Build the smoke-test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.image.outputs.name }}:ci-${{ github.sha }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+      - name: Smoke-test the image
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+        shell: bash
+        run: |
+          candidate="${IMAGE_NAME}:ci-${GITHUB_SHA}"
+
+          container_id="$(docker run --detach --read-only \
+            --tmpfs /tmp:rw,mode=1777 \
+            --tmpfs /app/data:rw,uid=1000,gid=1000,mode=0700 \
+            --env BLOG_COOKIE_SECURE=false \
+            --env BLOG_PUBLIC_ORIGINS=http://127.0.0.1:3000 \
+            "$candidate")"
+          trap 'docker logs "$container_id" || true; docker rm --force "$container_id" >/dev/null || true' EXIT
+
+          for _ in {1..45}; do
+            running="$(docker inspect --format '{{.State.Running}}' "$container_id")"
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id")"
+            if [[ "$health" == "healthy" ]]; then
+              echo "Image health check passed."
+              exit 0
+            fi
+            if [[ "$running" != "true" || "$health" == "unhealthy" ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "Image health check failed." >&2
+          exit 1
+
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the verified multi-platform image
+        id: publish
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+  deploy:
+    name: Deploy production
+    needs:
+      - verify
+      - image
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on:
+      - self-hosted
+      - linux
+      - blog-prod
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Check out trusted deployment files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Deploy immutable image on the Ubuntu host
+        env:
+          IMAGE_REF: ${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}
+          BLOG_DEPLOY_DIR: ${{ vars.BLOG_DEPLOY_DIR || '/opt/cocynoric-blog' }}
+          BLOG_BACKUP_DIR: ${{ vars.BLOG_BACKUP_DIR || '/opt/cocynoric-blog/backups' }}
+        run: bash scripts/deploy.sh "$IMAGE_REF"
