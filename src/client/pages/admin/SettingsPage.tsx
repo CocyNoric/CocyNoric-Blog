@@ -105,7 +105,7 @@ export function SettingsPage() {
     </section>
     <section className="settings-section"><h2>页脚</h2>
       <label className="form-field"><span>页脚版权名称</span><input value={settings.footerText} maxLength={120} onChange={(event) => update('footerText', event.target.value)} required /><small>页脚会自动添加 © 和当前年份</small></label>
-      <SelectField label="页脚底栏背景" value={settings.footerMode} options={[{ value: 'transparent', label: '透明' }, { value: 'primary', label: '主色填充' }]} onChange={(value) => update('footerMode', value)} />
+      <SelectField label="页脚底栏背景" value={settings.footerMode} options={[{ value: 'transparent', label: '透明' }, { value: 'primary', label: '主色淡层' }]} onChange={(value) => update('footerMode', value)} />
     </section>
     <section className="settings-section"><h2>首页展示</h2>
       <p className="settings-help">只影响首页文章和画廊最大区域，不改变独立列表页。</p>
