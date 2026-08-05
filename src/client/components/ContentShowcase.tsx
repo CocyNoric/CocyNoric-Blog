@@ -17,17 +17,17 @@ export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[
         <Link className="article-showcase-visual" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
           <span className="showcase-kicker">{categoryDisplayName(post.category)}</span>
           <h3>{post.title}</h3>
-          <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
+          <div className="article-showcase-footer">
+            <div className="article-showcase-summary">
+              <span className="showcase-info-label">Abstract</span>
+              <p>{post.excerpt || '打开文章阅读全文。'}</p>
+            </div>
+            <div className="article-showcase-actions">
+              <span className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></span>
+              <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
+            </div>
+          </div>
         </Link>
-        <div className="showcase-item-info article-showcase-info">
-          <div>
-            <span className="showcase-info-label">Abstract</span>
-            <p>{post.excerpt || '打开文章阅读全文。'}</p>
-          </div>
-          <div className="showcase-meta-column">
-            <span className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></span>
-          </div>
-        </div>
       </article>)}
     </section>
   </ListingRailStage>;
