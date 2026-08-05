@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PostInput } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
+import { CategoryInput } from '../../components/CategoryInput.js';
 import { DateField } from '../../components/DateField.js';
 import { ImageIcon } from '../../components/Icons.js';
 import { SelectField } from '../../components/SelectField.js';
@@ -29,6 +30,15 @@ export function EditorPage() {
   const [loadState, setLoadState] = useState<'new' | 'loading' | 'loaded' | 'error'>(id ? 'loading' : 'new');
   const [loadError, setLoadError] = useState('');
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void api.adminPosts().then((posts) => {
+      if (active) setCategorySuggestions(posts.map((item) => item.category));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -142,8 +152,8 @@ export function EditorPage() {
         <label className="form-field"><span>文章路径</span><input value={post.slug} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="my-post" onChange={(event) => update('slug', event.target.value)} required /></label>
         <DateField label="日期" value={post.date} onChange={(value) => update('date', value)} required />
         <SelectField label="状态" value={post.status} options={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '发布' }]} onChange={(value) => update('status', value)} />
-        <label className="form-field span-2"><span>多级分类</span><input value={post.category} maxLength={131} onChange={(event) => update('category', event.target.value)} placeholder="例如：技术 / 前端 / React" /><small>使用 / 分隔层级，最多 4 级</small></label>
-        <label className="form-field span-2"><span>摘要</span><textarea rows={2} maxLength={320} value={post.excerpt} onChange={(event) => update('excerpt', event.target.value)} /></label>
+        <div className="form-field metadata-category"><span>分类标签</span><CategoryInput value={post.category} suggestions={categorySuggestions} onChange={(value) => update('category', value)} /><small>逐级选择已有分类，或输入后按回车新建；最多 4 级</small></div>
+        <label className="form-field metadata-excerpt"><span>摘要</span><textarea rows={2} maxLength={320} value={post.excerpt} onChange={(event) => update('excerpt', event.target.value)} /></label>
       </div>
       <div className="editor-grid">
         <section
