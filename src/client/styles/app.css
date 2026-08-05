@@ -623,7 +623,7 @@
 .range-setting small, .thumbnail-layout-settings > small { color: var(--md-sys-color-on-surface-variant); font-weight: 400; }
 .thumbnail-layout-settings { display: grid; gap: 16px; padding-top: 4px; }
 .settings-help { margin: 0; padding: 11px 13px; border-radius: var(--radius-small); color: var(--md-sys-color-on-surface-variant); background: var(--surface-container-high); font-size: .84rem; line-height: 1.6; }
-.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
 .settings-section { min-width: 0; display: grid; align-content: start; gap: 18px; padding: 26px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--radius-large); background: var(--surface-container-low); box-shadow: 0 4px 16px color-mix(in srgb, var(--md-sys-color-shadow) 5%, transparent); transition: border-color .18s var(--motion-standard), box-shadow .18s var(--motion-standard); }
 .settings-section:hover { border-color: var(--md-sys-color-outline-variant); box-shadow: 0 8px 24px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent); }
 .settings-section h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; color: var(--md-sys-color-on-surface); font-size: 1.32rem; line-height: 1.25; letter-spacing: -.025em; }
