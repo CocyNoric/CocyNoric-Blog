@@ -514,16 +514,19 @@
 .status.draft { color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); }
 .row-actions, .heading-actions { display: flex; align-items: center; gap: 8px; }
 
-.form-field { display: grid; align-content: start; gap: 7px; color: var(--md-sys-color-on-surface-variant); font-size: .85rem; font-weight: 650; }
+.form-field { --field-label-background: var(--surface-container-low); position: relative; display: grid; align-content: start; gap: 7px; padding-top: 8px; color: var(--md-sys-color-on-surface-variant); font-size: .85rem; font-weight: 650; }
+.form-field:not(:has(> input[type='range'])) > span:first-child { position: absolute; z-index: 3; top: 0; left: 12px; max-width: calc(100% - 24px); overflow: hidden; padding: 0 5px; color: var(--md-sys-color-on-surface-variant); background: var(--field-label-background); font-size: .75rem; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; transition: color .16s var(--motion-standard); }
+.form-field:not(:has(> input[type='range'])):focus-within > span:first-child { color: var(--md-sys-color-primary); }
+.form-field:has(> input[type='range']) { padding-top: 0; }
 .form-field input:not([type='range']):not([type='color']), .form-field textarea, .form-field select {
-  width: 100%; min-height: 52px; padding: 12px 15px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); outline: 0; color: var(--md-sys-color-on-surface); background: transparent; font-weight: 400;
+  width: 100%; min-height: 56px; padding: 15px 15px 9px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; outline: 0; color: var(--md-sys-color-on-surface); background: transparent; font-weight: 400;
 }
 .form-field textarea { resize: vertical; }
-.form-field input:focus, .form-field textarea:focus, .form-field select:focus { border: 2px solid var(--md-sys-color-primary); padding: 11px 14px; }
+.form-field input:focus, .form-field textarea:focus, .form-field select:focus { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
 .tag-picker { position: relative; min-width: 0; }
-.tag-input { min-height: 52px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 6px 10px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); background: transparent; cursor: text; }
+.tag-input { min-height: 56px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 10px 5px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: transparent; cursor: text; }
 .tag-input:focus-within { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
-.form-field .tag-input input:not([type='range']):not([type='color']), .form-field .tag-input input:focus { width: 140px; min-width: 100px; min-height: 34px; flex: 1 1 120px; padding: 5px 2px; border: 0; outline: 0; background: transparent; }
+.form-field .tag-input input:not([type='range']):not([type='color']), .form-field .tag-input input:focus { width: 140px; min-width: 100px; min-height: 34px; flex: 1 1 120px; padding: 5px 2px; border: 0; outline: 0; background: transparent; box-shadow: none; }
 .tag-input-chip, .gallery-detail-tags span { display: inline-flex; align-items: center; gap: 3px; padding: 5px 10px; border-radius: 999px; color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container); font-size: .78rem; font-weight: 700; }
 .tag-input-chip button { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; font: inherit; line-height: 1; cursor: pointer; }
 .tag-input-chip button:hover { background: color-mix(in srgb, var(--md-sys-color-on-primary-container) 12%, transparent); }
@@ -539,17 +542,17 @@
 .category-picker .tag-picker-label { font-variant-numeric: tabular-nums; }
 .form-field input[type='range'], .range-input { display: block; width: 100%; height: 24px; margin: 0; accent-color: var(--md-sys-color-primary); }
 .select-field { position: relative; align-content: start; }
-.select-trigger { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); color: var(--md-sys-color-on-surface); background: transparent; text-align: left; font-weight: 400; cursor: pointer; }
-.select-trigger:focus-visible, .select-trigger[aria-expanded='true'] { padding: 11px 14px; border: 2px solid var(--md-sys-color-primary); outline: 0; }
+.select-trigger { width: 100%; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 15px 9px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; color: var(--md-sys-color-on-surface); background: transparent; text-align: left; font-weight: 400; cursor: pointer; }
+.select-trigger:focus-visible, .select-trigger[aria-expanded='true'] { border-color: var(--md-sys-color-primary); outline: 0; box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
 .select-arrow { width: 9px; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .16s var(--motion-standard); }
 .select-trigger[aria-expanded='true'] .select-arrow { transform: translateY(2px) rotate(225deg); }
 .select-listbox { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; min-width: 180px; overflow: hidden; padding: 6px 0; border-radius: var(--radius-small); color: var(--md-sys-color-on-surface); background: var(--surface-container-high); box-shadow: 0 5px 18px color-mix(in srgb, var(--md-sys-color-shadow) 24%, transparent); }
 .select-option { width: 100%; min-height: 44px; display: flex; align-items: center; padding: 8px 16px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .select-option.active { background: var(--surface-container-highest); }
 .select-option.selected { color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); font-weight: 700; }
-.date-field-trigger { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 15px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); color: var(--md-sys-color-on-surface); background: transparent; text-align: left; font-weight: 400; cursor: pointer; }
+.date-field-trigger { width: 100%; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 15px 9px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; color: var(--md-sys-color-on-surface); background: transparent; text-align: left; font-weight: 400; cursor: pointer; }
 .date-field-trigger svg { width: 20px; height: 20px; color: var(--md-sys-color-on-surface-variant); }
-.date-field-trigger:focus-visible, .date-field-trigger[aria-expanded='true'] { padding: 11px 14px; border: 2px solid var(--md-sys-color-primary); outline: 0; }
+.date-field-trigger:focus-visible, .date-field-trigger[aria-expanded='true'] { border-color: var(--md-sys-color-primary); outline: 0; box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
 .date-picker-dialog { width: min(calc(100% - 32px), 400px); max-width: none; padding: 0; border: 0; border-radius: var(--radius-extra); color: var(--md-sys-color-on-surface); background: transparent; }
 .date-picker-dialog::backdrop { background: color-mix(in srgb, var(--md-sys-color-scrim) 48%, transparent); }
 .date-picker-surface { padding-bottom: 12px; overflow: hidden; border-radius: var(--radius-extra); background: var(--surface-container-high); box-shadow: 0 12px 36px color-mix(in srgb, var(--md-sys-color-shadow) 28%, transparent); }
@@ -572,6 +575,7 @@
 .md-dialog-wide { width: min(calc(100% - 32px), 900px); }
 .md-dialog::backdrop { background: color-mix(in srgb, var(--md-sys-color-scrim) 48%, transparent); }
 .md-dialog-surface { display: grid; gap: 16px; padding: 28px; border-radius: var(--radius-extra); background: var(--surface-container-high); box-shadow: 0 12px 36px color-mix(in srgb, var(--md-sys-color-shadow) 28%, transparent); }
+.md-dialog-surface .form-field { --field-label-background: var(--surface-container-high); }
 .md-dialog-surface h2 { margin: 0; font-size: 1.55rem; }
 .md-dialog-surface > p { margin: 0; color: var(--md-sys-color-on-surface-variant); line-height: 1.6; }
 .md-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
@@ -628,12 +632,12 @@
 .settings-section h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; color: var(--md-sys-color-on-surface); font-size: 1.32rem; line-height: 1.25; letter-spacing: -.025em; }
 .settings-section h2::before { width: 5px; height: 22px; flex: 0 0 auto; content: ''; border-radius: 999px; background: var(--md-sys-color-primary); }
 .settings-shell .settings-section .form-field { gap: 8px; }
-.settings-shell .settings-section .form-field > span:first-child,
+.settings-shell .settings-section .form-field:not(:has(> input[type='range'])) > span:first-child { color: var(--md-sys-color-on-surface-variant); font-size: .75rem; font-weight: 700; }
 .settings-shell .range-setting-heading > span { color: var(--md-sys-color-on-surface); font-size: .83rem; font-weight: 700; }
 .settings-shell .settings-section .form-field input:not([type='range']):not([type='color']),
 .settings-shell .settings-section .form-field textarea,
 .settings-shell .settings-section .select-trigger,
-.settings-shell .settings-section .color-input { border-color: var(--md-sys-color-outline); background: var(--md-sys-color-surface); }
+.settings-shell .settings-section .color-input { border-color: var(--md-sys-color-outline); background: transparent; }
 .settings-shell .settings-section .form-field input:not([type='range']):not([type='color']):hover,
 .settings-shell .settings-section .form-field textarea:hover,
 .settings-shell .settings-section .select-trigger:hover,
@@ -662,7 +666,8 @@
 .background-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .background-controls .form-field,
 .background-controls .range-setting { align-content: start; }
-.color-input { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--md-sys-color-outline); border-radius: var(--radius-small); }
+.color-input { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 11px 12px 5px; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; }
+.color-input:focus-within { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
 .color-input input { width: 42px; height: 34px; padding: 0; border: 0; background: transparent; }
 .form-field small { color: var(--md-sys-color-on-surface-variant); font-weight: 400; }
 
