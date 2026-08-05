@@ -116,10 +116,12 @@
 
 .search-gallery-results { margin-top: 52px; }
 
-.listing-view-toggle { display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 999px; background: color-mix(in srgb, var(--surface-container-low) 88%, transparent); }
-.listing-view-toggle button { min-width: 96px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 7px 15px; border-radius: 999px; color: var(--md-sys-color-on-surface-variant); background: transparent; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; transition: color .18s var(--motion-standard), background .18s var(--motion-standard), transform .18s var(--motion-standard); }
-.listing-view-toggle button:hover { color: var(--md-sys-color-on-secondary-container); background: color-mix(in srgb, var(--md-sys-color-secondary-container) 54%, transparent); }
-.listing-view-toggle button[aria-pressed='true'] { color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); box-shadow: 0 1px 3px color-mix(in srgb, var(--md-sys-color-shadow) 12%, transparent); }
+.listing-view-toggle { display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-radius: 999px; background: transparent; }
+.listing-view-toggle button { min-width: 96px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 7px 15px; border: 1px solid var(--md-sys-color-outline); border-radius: 0; color: var(--md-sys-color-on-surface-variant); background: transparent; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; transition: color .2s var(--motion-standard), background .2s var(--motion-standard), transform .18s var(--motion-standard); }
+.listing-view-toggle button:first-child { border-radius: 999px 0 0 999px; }
+.listing-view-toggle button:last-child { margin-left: -1px; border-radius: 0 999px 999px 0; }
+.listing-view-toggle button:hover { color: var(--md-sys-color-on-surface); background: var(--surface-container); }
+.listing-view-toggle button[aria-pressed='true'] { z-index: 1; border-color: var(--md-sys-color-secondary); color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); }
 .listing-view-toggle button:active { transform: scale(.97); }
 .listing-view-toggle svg { width: 18px; height: 18px; }
 .listing-view-controls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
@@ -604,12 +606,14 @@
 .settings-shell .admin-heading h1 { margin: 0; font-size: clamp(2.65rem, 4.6vw, 3.7rem); line-height: 1.08; letter-spacing: -.045em; }
 .settings-shell .admin-heading p:last-child { max-width: 620px; margin: 2px 0 0; line-height: 1.6; }
 .settings-shell .admin-heading .primary-button { min-width: 132px; min-height: 48px; }
-.settings-tabs { position: sticky; z-index: 12; top: 82px; display: flex; gap: 4px; margin: 0 0 24px; padding: 5px; overflow-x: auto; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 999px; background: var(--md-sys-color-surface); box-shadow: 0 8px 24px color-mix(in srgb, var(--md-sys-color-shadow) 7%, transparent); scrollbar-width: none; }
+.settings-tabs { position: sticky; z-index: 12; top: 82px; display: flex; gap: 0; margin: 0 0 24px; padding: 0 12px; overflow-x: auto; border: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); border-radius: 0; background: color-mix(in srgb, var(--md-sys-color-surface) 94%, transparent); box-shadow: none; backdrop-filter: blur(16px); scrollbar-width: none; }
 .settings-tabs::-webkit-scrollbar { display: none; }
-.settings-tabs a { flex: 1 0 auto; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 20px; border-radius: 999px; color: var(--md-sys-color-on-surface-variant); text-decoration: none; font-size: .9rem; font-weight: 700; transition: color .18s var(--motion-standard), background .18s var(--motion-standard), box-shadow .18s var(--motion-standard); }
-.settings-tabs a:hover, .settings-tabs a:focus-visible { color: var(--md-sys-color-on-surface); background: var(--surface-container); outline: 0; }
+.settings-tabs a { position: relative; flex: 1 0 auto; min-height: 52px; display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 0; color: var(--md-sys-color-on-surface-variant); text-decoration: none; font-size: .9rem; font-weight: 700; transition: color .2s var(--motion-standard), background .2s var(--motion-standard); }
+.settings-tabs a::after { position: absolute; right: 22%; bottom: 0; left: 22%; height: 3px; content: ''; border-radius: 3px 3px 0 0; background: var(--md-sys-color-primary); transform: scaleX(0); transform-origin: center; transition: transform .24s var(--motion-standard); }
+.settings-tabs a:hover, .settings-tabs a:focus-visible { color: var(--md-sys-color-on-surface); background: var(--surface-container-low); outline: 0; }
 .settings-tabs a:focus-visible { box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
-.settings-tabs a.active { color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); box-shadow: 0 1px 3px color-mix(in srgb, var(--md-sys-color-shadow) 12%, transparent); }
+.settings-tabs a.active { color: var(--md-sys-color-primary); background: transparent; }
+.settings-tabs a.active::after { transform: scaleX(1); }
 .checkbox-field span { display: flex; align-items: center; gap: 9px; min-height: 44px; color: var(--md-sys-color-on-surface); }
 .checkbox-field input { width: 18px; height: 18px; accent-color: var(--md-sys-color-primary); }
 .switch-field { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--md-sys-color-on-surface); font-size: .9rem; font-weight: 650; cursor: pointer; }
@@ -907,8 +911,8 @@
   .settings-shell .admin-nav nav { width: 100%; }
   .settings-shell .admin-nav a { gap: 6px; padding: 7px 9px; font-size: .82rem; }
   .settings-shell .admin-nav .text-button { margin-left: auto; white-space: nowrap; }
-  .settings-tabs { top: 112px; gap: 2px; margin-bottom: 16px; padding: 4px; border-radius: var(--radius-large); }
-  .settings-tabs a { min-height: 44px; padding: 7px 14px; font-size: .84rem; }
+  .settings-tabs { top: 112px; gap: 0; margin-bottom: 16px; padding: 0 4px; border-radius: 0; }
+  .settings-tabs a { min-height: 48px; padding: 8px 14px; font-size: .84rem; }
   .settings-grid { gap: 14px; }
   .settings-section { gap: 16px; padding: 20px 16px; }
   .settings-section:hover { box-shadow: 0 4px 16px color-mix(in srgb, var(--md-sys-color-shadow) 5%, transparent); }
