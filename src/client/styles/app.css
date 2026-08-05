@@ -369,10 +369,12 @@
 .footer-inner { min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 20px; color: var(--md-sys-color-on-surface-variant); font-size: .88rem; }
 .footer-inner a { text-underline-offset: 3px; }
 
-.button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 22px; border-radius: 999px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 22px; border-radius: 16px; font-weight: 700; text-decoration: none; cursor: pointer; transition: color .18s var(--motion-standard), background .18s var(--motion-standard), box-shadow .18s var(--motion-standard), transform .18s var(--motion-standard); }
 .button svg { width: 20px; }
-.primary-button { color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); box-shadow: 0 1px 2px color-mix(in srgb, var(--md-sys-color-shadow) 22%, transparent); }
-.primary-button:hover { box-shadow: 0 3px 8px color-mix(in srgb, var(--md-sys-color-shadow) 22%, transparent); }
+.primary-button { min-height: 48px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--md-sys-color-shadow) 24%, transparent); }
+.primary-button:hover:not(:disabled) { background: color-mix(in srgb, var(--md-sys-color-primary) 92%, var(--md-sys-color-on-primary)); box-shadow: 0 3px 8px color-mix(in srgb, var(--md-sys-color-shadow) 24%, transparent); }
+.primary-button:active:not(:disabled) { transform: scale(.98); box-shadow: 0 1px 2px color-mix(in srgb, var(--md-sys-color-shadow) 20%, transparent); }
+.button:focus-visible { outline: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent); outline-offset: 3px; }
 .secondary-button { color: var(--md-sys-color-primary); background: transparent; border: 1px solid var(--md-sys-color-outline); }
 .text-button { color: var(--md-sys-color-primary); background: transparent; cursor: pointer; }
 .danger-button { color: var(--md-sys-color-on-error); background: var(--md-sys-color-error); }
