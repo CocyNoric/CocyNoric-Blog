@@ -47,6 +47,9 @@
     "yazl": "^3.3.1",
     "zod": "^4.4.3"
   },
+  "overrides": {
+    "katex": "$katex"
+  },
   "devDependencies": {
     "@types/busboy": "^1.5.4",
     "@types/compression": "^1.8.1",
