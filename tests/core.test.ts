@@ -513,10 +513,15 @@ test('normalizes article categories and defaults legacy posts to uncategorized',
 });
 
 test('renders GFM and LaTeX without unsafe HTML', async () => {
-  const html = await renderMarkdown('~~旧内容~~ $E=mc^2$ <script>alert(1)</script> [危险](javascript:alert(1))');
+  const html = await renderMarkdown('~~旧内容~~ $E=mc^2$ $$\\frac{a}{b}$$ <script>alert(1)</script> [危险](javascript:alert(1))');
 
   assert.match(html, /<del>旧内容<\/del>/);
   assert.match(html, /class="katex"/);
+  assert.match(html, /class="katex-base"/);
+  assert.match(html, /class="katex-strut"/);
+  assert.match(html, /class="katex-sizing/);
+  assert.doesNotMatch(html, /class="base"/);
+  assert.doesNotMatch(html, /class="katex-error"/);
   assert.doesNotMatch(html, /<script/i);
   assert.doesNotMatch(html, /javascript:/i);
 });
