@@ -126,7 +126,7 @@ jobs:
             org.opencontainers.image.description=Self-hosted Material Design 3 blog
 
       - name: Build the smoke-test image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -180,7 +180,7 @@ jobs:
       - name: Publish the verified multi-platform image
         id: publish
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
