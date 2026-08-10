@@ -48,6 +48,7 @@ const defaultSettings: SiteSettings = {
     article: {
       railSide: 'left',
       railWidth: 340,
+      useFilledCardColors: false,
       showRecentPosts: true,
       recentPostsLimit: 4,
       showRecentGallery: false,

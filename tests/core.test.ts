@@ -249,6 +249,7 @@ test('initializes settings and starter posts', async () => {
   assert.equal(settings.homeHero.titleAlign, 'left');
   assert.equal(settings.homeHero.contentOffset, 0);
   assert.equal(settings.browsing.article.railWidth, 340);
+  assert.equal(settings.browsing.article.useFilledCardColors, false);
   assert.equal(settings.browsing.article.contentWidth, 820);
   assert.equal(settings.browsing.article.showRecentGallery, false);
   assert.equal(settings.browsing.article.thumbnailColumns, 2);
@@ -322,7 +323,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
 
   assert.deepEqual(migratedV1.browsing.article, {
     railSide: 'left', railWidth: 340, showRecentPosts: true, recentPostsLimit: 4,
-    showRecentGallery: false, recentGalleryLimit: 6, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820,
+    showRecentGallery: false, recentGalleryLimit: 6, useFilledCardColors: false, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 820,
   });
   assert.deepEqual(migratedV1.browsing.gallery, {
     railSide: 'right', railWidth: 340, gridMaxColumns: 3, showcaseCardImageLimit: 5, showRecentPosts: true, recentPostsLimit: 4,
@@ -389,7 +390,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
     browsing: {
       article: {
         railSide: 'right', railWidth: 420, showRecentPosts: true, recentPostsLimit: 8,
-        showRecentGallery: true, recentGalleryLimit: 3, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 880,
+        showRecentGallery: true, recentGalleryLimit: 3, useFilledCardColors: true, thumbnailColumns: 2, thumbnailRows: 3, contentWidth: 880,
       },
       gallery: {
         railSide: 'left', railWidth: 420, gridMaxColumns: 5, showcaseCardImageLimit: 7, showRecentPosts: true, recentPostsLimit: 8,
@@ -406,6 +407,7 @@ test('migrates legacy settings and persists independent profile and browsing opt
   assert.equal(saved.webIcon, null);
   assert.equal(saved.contentVisibility.articles, false);
   assert.equal(saved.browsing.article.railWidth, 420);
+  assert.equal(saved.browsing.article.useFilledCardColors, true);
   assert.equal(saved.browsing.article.railSide, 'right');
   assert.equal(saved.browsing.gallery.railSide, 'left');
   assert.equal(saved.browsing.gallery.gridMaxColumns, 5);
