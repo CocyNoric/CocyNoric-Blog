@@ -59,46 +59,48 @@ export function SelectField<T extends string>({ label, value, options, onChange 
   return (
     <div className="form-field select-field" ref={rootRef}>
       <span id={`${id}-label`}>{label}</span>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="select-trigger"
-        aria-labelledby={`${id}-label ${id}-value`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={`${id}-listbox`}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={onKeyDown}
-      >
-        <span id={`${id}-value`}>{selected?.label}</span>
-        <span className="select-arrow" aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          id={`${id}-listbox`}
-          className="select-listbox"
-          role="listbox"
-          aria-labelledby={`${id}-label`}
-          aria-activedescendant={`${id}-option-${activeIndex}`}
-          tabIndex={-1}
+      <div className="select-control">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="select-trigger"
+          aria-labelledby={`${id}-label ${id}-value`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={`${id}-listbox`}
+          onClick={() => setOpen((current) => !current)}
           onKeyDown={onKeyDown}
         >
-          {options.map((option, index) => (
-            <button
-              type="button"
-              id={`${id}-option-${index}`}
-              className={`select-option${index === activeIndex ? ' active' : ''}${option.value === value ? ' selected' : ''}`}
-              role="option"
-              aria-selected={option.value === value}
-              key={option.value}
-              onPointerMove={() => setActiveIndex(index)}
-              onClick={() => choose(index)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
+          <span id={`${id}-value`}>{selected?.label}</span>
+          <span className="select-arrow" aria-hidden="true" />
+        </button>
+        {open && (
+          <div
+            id={`${id}-listbox`}
+            className="select-listbox"
+            role="listbox"
+            aria-labelledby={`${id}-label`}
+            aria-activedescendant={`${id}-option-${activeIndex}`}
+            tabIndex={-1}
+            onKeyDown={onKeyDown}
+          >
+            {options.map((option, index) => (
+              <button
+                type="button"
+                id={`${id}-option-${index}`}
+                className={`select-option${index === activeIndex ? ' active' : ''}${option.value === value ? ' selected' : ''}`}
+                role="option"
+                aria-selected={option.value === value}
+                key={option.value}
+                onPointerMove={() => setActiveIndex(index)}
+                onClick={() => choose(index)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

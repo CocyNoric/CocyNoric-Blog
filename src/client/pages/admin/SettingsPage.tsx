@@ -3,7 +3,7 @@ import { NavLink, useSearchParams } from 'react-router-dom';
 import type { SiteSettings } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
-import { ImageIcon } from '../../components/Icons.js';
+import { CheckIcon, ImageIcon, RefreshIcon } from '../../components/Icons.js';
 import { ImageDropField } from '../../components/ImageDropField.js';
 import { SelectField } from '../../components/SelectField.js';
 import { useAuth } from '../../hooks/useAuth.js';
@@ -35,15 +35,20 @@ type RangeSettingProps = {
 };
 
 function RangeSetting({ label, value, defaultValue, min, max, step, suffix = '', disabled, help, onChange }: RangeSettingProps) {
-  return <div className="range-setting">
-    <div className="range-setting-heading"><span>{label}：{value}{suffix}</span><button type="button" className="button text-button reset-default-button" onClick={() => onChange(defaultValue)} disabled={disabled || value === defaultValue}>恢复默认</button></div>
-    <input className="range-input" type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />
-    {help && <small>{help}</small>}
+  const progress = ((value - min) / (max - min)) * 100;
+  return <div className="range-setting" style={{ '--range-progress': `${progress}%` } as React.CSSProperties}>
+    <div className="setting-copy"><span className="setting-title">{label}</span>{help && <small>{help}</small>}</div>
+    <div className="range-control">
+      <output className="range-value" aria-live="polite">{value}{suffix}</output>
+      <div className="range-track-wrap"><input className="range-input" aria-label={label} type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} /></div>
+      <div className="range-scale" aria-hidden="true"><span>{min}{suffix}</span><span>{max}{suffix}</span></div>
+    </div>
+    <button type="button" className="icon-button reset-default-button" onClick={() => onChange(defaultValue)} disabled={disabled || value === defaultValue} title="恢复默认" aria-label={`${label}恢复默认`}><RefreshIcon /></button>
   </div>;
 }
 
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="switch-field"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span></label>;
+function ToggleField({ label, help, checked, onChange }: { label: string; help?: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="switch-field"><span className="setting-copy"><span className="setting-title">{label}</span>{help && <small>{help}</small>}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span className="switch-track" aria-hidden="true"><span className="switch-thumb"><CheckIcon /></span></span></label>;
 }
 
 export function SettingsPage() {
@@ -158,6 +163,7 @@ export function SettingsPage() {
       <section className="settings-section span-2"><h2>文章页面</h2>
         <p className="settings-help">关闭后，前台导航、首页文章区域、文章列表与文章详情都会隐藏；后台文章管理不受影响。</p>
         <ToggleField label="在公开站点显示文章" checked={settings.contentVisibility.articles} onChange={(value) => updateVisibility('articles', value)} />
+        <ToggleField label="卡片颜色模式切换" help="开启后恢复主色填充卡片；浅色与暗色主题会自动切换到对应的高对比前景色。" checked={config.useFilledCardColors} onChange={(value) => updateArticle('useFilledCardColors', value)} />
       </section>
       <section className="settings-section"><h2>文章信息栏</h2>
         <p className="settings-help">桌面端可调整信息栏位置和宽度；900px 以下会自动改为主内容在前的信息栏布局。</p>
@@ -244,11 +250,12 @@ export function SettingsPage() {
   return <main id="main" className="page-shell admin-shell settings-shell">
     <AdminNav />
     <form onSubmit={save}>
-      <div className="admin-heading"><div><p className="eyebrow">全站配置</p><h1>站点设置</h1><p>基础资料、首页外观和详情页浏览行为分别管理。</p></div><button className="button primary-button" disabled={saving || uploading}>{saving ? '正在保存…' : '保存设置'}</button></div>
+      <div className="admin-heading"><div><p className="eyebrow">全站配置</p><h1>站点设置</h1><p>基础资料、首页外观和详情页浏览行为分别管理。</p></div></div>
       <nav className="settings-tabs" aria-label="站点设置分类">{tabs.map((tab) => <NavLink key={tab.value} to={`/admin/settings?tab=${tab.value}`} className={({ isActive }) => isActive && activeTab === tab.value ? 'active' : undefined} aria-current={activeTab === tab.value ? 'page' : undefined}>{tab.label}</NavLink>)}</nav>
       {error && <div className="message error-message" role="alert">{error}</div>}
       {message && <div className="message success-message" role="status">{message}</div>}
       {activeTab === 'base' ? renderBase() : activeTab === 'article' ? renderArticleBrowsing() : activeTab === 'gallery' ? renderGalleryBrowsing() : renderRepository()}
+      <div className="settings-save-bar"><div><strong>应用站点设置</strong><span>保存后会立即更新公开站点的外观与浏览行为。</span></div><button className="button primary-button" disabled={saving || uploading}>{saving ? '正在保存…' : '保存设置'}</button></div>
     </form>
   </main>;
 }

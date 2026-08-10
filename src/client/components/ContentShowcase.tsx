@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import { categoryDisplayName } from '../../shared/categories.js';
 import type { PostSummary } from '../../shared/types.js';
+import { categoryAccent } from '../categoryAccent.js';
 import { ArrowIcon, CalendarIcon, DownloadIcon } from './Icons.js';
 import { ListingRailStage } from './ListingRailStage.js';
 
@@ -13,22 +14,25 @@ type ShowcaseRailProps = {
 export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[] } & ShowcaseRailProps) {
   return <ListingRailStage rail={rail} railOpen={railOpen} railLabel="文章浏览信息" variant="feed">
     <section className="article-showcase-feed" aria-label="文章帖子">
-      {posts.map((post) => <article className="showcase-card article-showcase-card" key={post.id}>
-        <Link className="article-showcase-visual" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
-          <span className="showcase-kicker">{categoryDisplayName(post.category)}</span>
-          <h3>{post.title}</h3>
-          <div className="article-showcase-footer">
-            <div className="article-showcase-summary">
-              <span className="showcase-info-label">Abstract</span>
-              <p>{post.excerpt || '打开文章阅读全文。'}</p>
+      {posts.map((post) => {
+        const category = categoryDisplayName(post.category);
+        return <article className="showcase-card article-showcase-card article-accent-card" data-accent={categoryAccent(post.category)} key={post.id}>
+          <Link className="article-showcase-visual" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>
+            <span className="showcase-kicker">{category}</span>
+            <h3>{post.title}</h3>
+            <div className="article-showcase-footer">
+              <div className="article-showcase-summary">
+                <span className="showcase-info-label">Abstract</span>
+                <p>{post.excerpt || '打开文章阅读全文。'}</p>
+              </div>
+              <div className="article-showcase-actions">
+                <span className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></span>
+                <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
+              </div>
             </div>
-            <div className="article-showcase-actions">
-              <span className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></span>
-              <span className="showcase-open-cue">阅读文章<ArrowIcon /></span>
-            </div>
-          </div>
-        </Link>
-      </article>)}
+          </Link>
+        </article>;
+      })}
     </section>
   </ListingRailStage>;
 }
