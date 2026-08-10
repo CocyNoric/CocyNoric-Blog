@@ -34,6 +34,7 @@ const legacyBrowsingBaseFields = {
 const browsingSchema = z.object({
   article: z.object({
     ...browsingBaseFields,
+    useFilledCardColors: z.boolean().default(false),
     contentWidth: z.number().int().min(600).max(1100),
     thumbnailColumns: z.number().int().min(1).max(5),
     thumbnailRows: z.number().int().min(1).max(4),

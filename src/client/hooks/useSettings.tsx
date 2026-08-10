@@ -55,6 +55,7 @@ const fallbackSettings: PublicSettings = {
     article: {
       railSide: 'left',
       railWidth: 340,
+      useFilledCardColors: false,
       showRecentPosts: true,
       recentPostsLimit: 4,
       showRecentGallery: false,
@@ -119,7 +120,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     root.style.setProperty('--content-width', settings.contentWidth === 'narrow' ? '820px' : settings.contentWidth === 'wide' ? '1280px' : '1080px');
     root.style.setProperty('--body-font-size', `${settings.bodyFontSize}px`);
     root.style.setProperty('--card-padding', settings.cardDensity === 'compact' ? '18px' : '24px');
-  }, [settings.contentWidth, settings.bodyFontSize, settings.cardDensity]);
+    root.dataset.articleCardColors = settings.browsing.article.useFilledCardColors ? 'filled' : 'tonal';
+  }, [settings.contentWidth, settings.bodyFontSize, settings.cardDensity, settings.browsing.article.useFilledCardColors]);
 
   useEffect(() => {
     const current = document.querySelector<HTMLLinkElement>('link[data-site-favicon]');
