@@ -387,7 +387,7 @@
 .repository-manager-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .repository-manager-toolbar > div { display: grid; min-width: 0; gap: 3px; }
 .repository-manager-toolbar small { overflow: hidden; color: var(--md-sys-color-on-surface-variant); text-overflow: ellipsis; white-space: nowrap; }
-.repository-manager-breadcrumbs { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.repository-manager-breadcrumbs { width: 100%; min-height: 54px; margin: 0; padding: 12px 18px; border: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); border-radius: 0; background: color-mix(in srgb, var(--surface-container) 72%, transparent); box-shadow: none; backdrop-filter: none; }
 .repository-manager-breadcrumbs button { padding: 2px 0; border: 0; color: var(--md-sys-color-primary); background: transparent; cursor: pointer; font: inherit; }
 .repository-manager-breadcrumbs button:hover { text-decoration: underline; }
 .repository-manager-content .repository-entry-list { display: block; border: 0; border-radius: 0; background: transparent; }
