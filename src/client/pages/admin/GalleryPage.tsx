@@ -485,7 +485,7 @@ export function GalleryPage() {
             onKeyDown={(event) => handleKeyboardOrder(event, entry)}
           ><DragHandleIcon /></button>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} loading="lazy" focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} />{entry.images.length > 1 && <span className="gallery-image-count">{entry.images.length} 张</span>}</div>
-          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
+          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3></div>
           <div className="gallery-card-actions">
             <button className="icon-button" type="button" disabled={savingOrder} onClick={() => beginEdit(entry)} aria-label={`编辑${entry.title}`}><EditIcon /></button>
             <button className="icon-button danger" type="button" disabled={savingOrder} onClick={() => setPendingDelete(entry)} aria-label={`删除${entry.title}`}><TrashIcon /></button>
@@ -497,7 +497,7 @@ export function GalleryPage() {
         const itemTags = item ? tagsByItem.get(item.id) ?? [] : [];
         return item ? <article ref={overlayRef} aria-hidden="true" className="gallery-sort-overlay" style={{ width: pointerPreview.source.width }}>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(item)) }}><GalleryCropImage src={item.url} alt="" focus={item.cardFocus} aspectRatio={item.cardAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} /></div>
-          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
+          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3></div>
         </article> : null;
       })()}
     </section>
