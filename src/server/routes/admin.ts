@@ -8,6 +8,7 @@ import { receiveGalleryImages, receiveImage } from '../media.js';
 import { receivePostImport } from '../postImport.js';
 import { renderMarkdown } from '../markdown.js';
 import { receiveCodeTool, receiveCodeToolProject } from '../codeTools.js';
+import { accountUpload, trafficStore } from '../traffic.js';
 
 export const adminRouter = Router();
 
@@ -37,7 +38,7 @@ adminRouter.get('/repository/code-tools/projects/:slug', async (req, res, next) 
   } catch (error) { next(error); }
 });
 
-adminRouter.post('/repository/code-tools/projects', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/repository/code-tools/projects', requireWriteProtection, accountUpload, async (req, res, next) => {
   let upload: Awaited<ReturnType<typeof receiveCodeToolProject>> | null = null;
   try {
     upload = await receiveCodeToolProject(req);
@@ -79,7 +80,7 @@ adminRouter.get('/repository/code-tools', async (_req, res, next) => {
   }
 });
 
-adminRouter.post('/repository/code-tools', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/repository/code-tools', requireWriteProtection, accountUpload, async (req, res, next) => {
   let upload: Awaited<ReturnType<typeof receiveCodeTool>> | null = null;
   try {
     upload = await receiveCodeTool(req);
@@ -137,7 +138,7 @@ adminRouter.post('/preview', requireWriteProtection, async (req, res, next) => {
   }
 });
 
-adminRouter.post('/posts/import', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/posts/import', requireWriteProtection, accountUpload, async (req, res, next) => {
   try {
     res.status(201).json(await receivePostImport(req));
   } catch (error) {
@@ -183,15 +184,35 @@ adminRouter.get('/settings', async (_req, res, next) => {
   }
 });
 
+adminRouter.get('/traffic', async (_req, res, next) => {
+  try { res.json(await trafficStore.get()); } catch (error) { next(error); }
+});
+
+adminRouter.put('/traffic', requireWriteProtection, async (req, res, next) => {
+  try {
+    const monthlyLimitGb = Number(req.body?.monthlyLimitGb);
+    const result = await trafficStore.setLimit(monthlyLimitGb);
+    const current = await dataStore.readSettings();
+    await dataStore.writeSettings({ ...current, transferQuota: { monthlyLimitGb } });
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+adminRouter.post('/traffic/reset', requireWriteProtection, async (_req, res, next) => {
+  try { res.json(await trafficStore.reset()); } catch (error) { next(error); }
+});
+
 adminRouter.put('/settings', requireWriteProtection, async (req, res, next) => {
   try {
-    res.json(await dataStore.writeSettings(req.body));
+    const settings = await dataStore.writeSettings(req.body);
+    if (settings.transferQuota?.monthlyLimitGb) await trafficStore.setLimit(settings.transferQuota.monthlyLimitGb);
+    res.json(settings);
   } catch (error) {
     next(error);
   }
 });
 
-adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/media', requireWriteProtection, accountUpload, async (req, res, next) => {
   let temporaryPath: string | null = null;
   try {
     const upload = await receiveImage(req, { fieldLimit: 1, preserveOriginal: true });
@@ -207,7 +228,7 @@ adminRouter.post('/media', requireWriteProtection, async (req, res, next) => {
   }
 });
 
-adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/gallery', requireWriteProtection, accountUpload, async (req, res, next) => {
   let temporaryPath: string | null = null;
   try {
     const upload = await receiveImage(req, { fieldLimit: 14, preserveOriginal: true, maximumBytes: config.galleryUploadLimit });
@@ -228,7 +249,7 @@ adminRouter.post('/gallery', requireWriteProtection, async (req, res, next) => {
   }
 });
 
-adminRouter.post('/gallery/group', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/gallery/group', requireWriteProtection, accountUpload, async (req, res, next) => {
   let temporaryPaths: string[] = [];
   try {
     const upload = await receiveGalleryImages(req, { maximumFiles: 30, maximumBytes: config.galleryUploadLimit, fieldLimit: 14 });
@@ -291,7 +312,7 @@ adminRouter.delete('/gallery/:id', requireWriteProtection, async (req, res, next
   }
 });
 
-adminRouter.post('/settings/media/:kind', requireWriteProtection, async (req, res, next) => {
+adminRouter.post('/settings/media/:kind', requireWriteProtection, accountUpload, async (req, res, next) => {
   try {
     const kind = req.params.kind;
     const mediaFields = {

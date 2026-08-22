@@ -257,6 +257,7 @@ export const defaultContentVisibility = {
 const settingsV11Schema = settingsV10Schema.extend({
   version: z.literal(11),
   contentVisibility: contentVisibilitySchema,
+  transferQuota: z.object({ monthlyLimitGb: z.number().int().min(1).max(1000) }).default({ monthlyLimitGb: 50 }),
 });
 
 const defaultRepositorySettings = {
@@ -732,7 +733,7 @@ export const previewSchema = z.object({
   markdown: z.string().max(1024 * 1024),
 });
 
-export type SiteSettings = z.infer<typeof settingsSchema>;
+export type SiteSettings = z.infer<typeof settingsV11Schema>;
 export type ThumbnailAspectRatio = z.infer<typeof thumbnailAspectRatioSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
 export type PostInput = z.infer<typeof postInputSchema>;

@@ -6,6 +6,8 @@ import { AdminNav } from '../../components/AdminNav.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { ArrowIcon, DownloadIcon, FolderIcon, ImageIcon, TrashIcon, UploadIcon } from '../../components/Icons.js';
 import { useAuth } from '../../hooks/useAuth.js';
+import type { UploadProgress } from '../../../shared/types.js';
+import { UploadProgress as UploadProgressView } from '../../components/UploadProgress.js';
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -28,6 +30,7 @@ export function AdminRepositoryPage() {
   const [zipMode, setZipMode] = useState<'extract' | 'keep'>('extract');
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -65,10 +68,11 @@ export function AdminRepositoryPage() {
     if (!projectName.trim()) { setError('请输入项目名称'); return; }
     if (!files.length) { setError(mode === 'folder' ? '请选择项目文件夹' : '请选择 ZIP 文件'); return; }
     setUploading(true);
+    setUploadProgress({ loaded: 0, total: files.reduce((sum, file) => sum + file.size, 0), percent: 0 });
     setError('');
     setMessage('');
     try {
-      const project = await api.uploadCodeToolProject({ projectName: projectName.trim(), description: description.trim(), mode, zipMode, files }, csrfToken);
+      const project = await api.uploadCodeToolProject({ projectName: projectName.trim(), description: description.trim(), mode, zipMode, files }, csrfToken, setUploadProgress);
       await loadProjects();
       setProjectName('');
       setDescription('');
@@ -76,7 +80,7 @@ export function AdminRepositoryPage() {
       setMessage(mode === 'zip' && zipMode === 'keep' ? 'ZIP 已作为附件项目上传。' : '项目已上传并公开。');
       await openProject(project);
     } catch (cause) {
-      setError((cause as Error).message);
+      setError((cause as Error).message); setUploadProgress(null);
     } finally {
       setUploading(false);
     }
@@ -145,8 +149,10 @@ export function AdminRepositoryPage() {
       ? `“${pendingDelete.entry.name}/”及其中全部文件会被永久删除，此操作无法撤销。`
       : `“${pendingDelete.entry.name}”会被永久删除，此操作无法撤销。`
       : '';
+  const zipTransferring = uploading && mode === 'zip' && (uploadProgress?.percent ?? 0) < 100;
+  const uploadButtonLabel = !uploading ? '上传项目' : mode === 'zip' && uploadProgress?.percent === 100 ? '正在处理 ZIP…' : '正在上传…';
 
-  return <main id="main" className="page-shell admin-shell repository-admin-shell">
+  return <main id="main" className={`page-shell admin-shell repository-admin-shell${zipTransferring ? ' is-zip-transferring' : ''}`} aria-busy={uploading && mode === 'zip'}>
     <AdminNav />
     <div className="admin-heading"><div><p className="eyebrow">文件管理</p><h1>仓库</h1><p>按内容类型管理公开仓库；代码和工具以独立项目组织。</p></div></div>
     {error && <div className="message error-message" role="alert">{error}</div>}
@@ -164,6 +170,8 @@ export function AdminRepositoryPage() {
         <Link className="button secondary-button" to="/admin/gallery">前往画廊管理</Link>
       </section>
     </div>
+
+    {uploadProgress && <section className="repository-upload-progress-card" aria-label="仓库上传状态"><span className="repository-upload-progress-icon"><UploadIcon /></span><UploadProgressView progress={uploadProgress} label={uploading && mode === 'zip' && uploadProgress.percent === 100 ? '正在处理 ZIP' : uploading ? '正在上传仓库项目' : '仓库项目上传完成'} /></section>}
 
     <section className="repository-tools-panel" aria-labelledby="code-tools-heading">
       <div className="section-heading"><div><p className="eyebrow">code-tools/</p><h2 id="code-tools-heading">代码和工具</h2></div><p className="section-description">上传文件夹或 ZIP 项目；所有文件只作为附件下载。</p></div>
@@ -185,7 +193,7 @@ export function AdminRepositoryPage() {
           <span className="repository-domain-icon"><UploadIcon /></span>
           <span><strong>{files.length ? (mode === 'folder' ? `已选择 ${files.length} 个文件` : files[0].name) : (mode === 'folder' ? '选择项目文件夹' : '选择 ZIP 文件')}</strong><small>{files.length ? `${formatFileSize(files.reduce((sum, file) => sum + file.size, 0))} · ${zipMode === 'keep' && mode === 'zip' ? '压缩包将原样保留' : '保留项目目录结构'}` : mode === 'folder' ? '最多 1000 个文件，单个文件最大 20 MB' : '最大 128 MB；默认安全解压为项目'}</small></span>
           <label className="button secondary-button import-control">{mode === 'folder' ? '选择文件夹' : '选择 ZIP'}<input type="file" accept={mode === 'zip' ? '.zip,application/zip' : undefined} multiple={mode === 'folder'} {...(mode === 'folder' ? { webkitdirectory: '' } : {})} disabled={uploading} onChange={(event) => { chooseFiles(event.target.files); event.target.value = ''; }} /></label>
-          <button className="button primary-button" type="button" disabled={!files.length || uploading} onClick={() => void upload()}>{uploading ? '正在上传…' : '上传项目'}</button>
+          <button className="button primary-button" type="button" disabled={!files.length || uploading} onClick={() => void upload()}>{uploadButtonLabel}</button>
         </div>
       </div>
 

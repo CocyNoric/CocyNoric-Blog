@@ -20,6 +20,7 @@ const defaultSettings: SiteSettings = {
   repositoryDescription: '代码、工具与项目归档。',
   repositoryAppearance: defaultRepositoryAppearance,
   contentVisibility: defaultContentVisibility,
+  transferQuota: { monthlyLimitGb: 50 },
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,

@@ -27,6 +27,7 @@ const fallbackSettings: PublicSettings = {
     gallery: true,
     repository: true,
   },
+  transferQuota: { monthlyLimitGb: 50 },
   footerMode: 'transparent',
   homeContent: {
     articleLimit: 4,

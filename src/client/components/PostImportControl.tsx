@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { UploadIcon } from './Icons.js';
 import { useAuth } from '../hooks/useAuth.js';
+import type { UploadProgress } from '../../shared/types.js';
+import { UploadProgress as UploadProgressView } from './UploadProgress.js';
 
 const acceptedImports = new Set(['.md', '.markdown', '.zip']);
 const importLimit = 128 * 1024 * 1024;
@@ -18,6 +20,7 @@ export function PostImportControl({ className = '', label = '导入文章', onEr
   const { csrfToken } = useAuth();
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
   const dragDepth = useRef(0);
 
   const importFile = async (file?: File) => {
@@ -27,12 +30,14 @@ export function PostImportControl({ className = '', label = '导入文章', onEr
     const limit = extension === '.zip' ? importLimit : 1024 * 1024;
     if (file.size > limit) { onError(extension === '.zip' ? 'ZIP 文件不能超过 128 MB' : 'Markdown 文件不能超过 1 MB'); return; }
     setImporting(true);
+    setProgress({ loaded: 0, total: file.size, percent: 0 });
     onError('');
     try {
-      const post = await api.importPost(file, csrfToken);
+      const post = await api.importPost(file, csrfToken, setProgress);
       navigate(`/admin/posts/${post.id}`);
     } catch (cause) {
       onError((cause as Error).message);
+      setProgress(null);
     } finally {
       setImporting(false);
     }
@@ -45,7 +50,7 @@ export function PostImportControl({ className = '', label = '导入文章', onEr
     setDragging(true);
   };
 
-  return <label
+  return <span className="upload-control-with-progress"><label
     className={`button secondary-button import-control${dragging ? ' drag-active' : ''}${className ? ` ${className}` : ''}`}
     onDragEnter={dragEnter}
     onDragOver={(event) => event.preventDefault()}
@@ -64,5 +69,5 @@ export function PostImportControl({ className = '', label = '导入文章', onEr
   >
     <UploadIcon />{importing ? '正在导入…' : label}
     <input type="file" accept=".md,.markdown,.zip" disabled={importing} onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ''; }} />
-  </label>;
+  </label><UploadProgressView progress={progress} label="文章导入进度" /></span>;
 }
