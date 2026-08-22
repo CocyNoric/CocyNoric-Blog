@@ -194,6 +194,7 @@ export function AdvancedGalleryUploadPage() {
 
     {error && <div className="message error-message" role="alert">{error}</div>}
     {message && <div className="message success-message" role="status">{message}{uploadedItem && <> <Link to={`/gallery/${uploadedItem.id}`}>查看展示</Link></>}</div>}
+    {uploadProgress && <section className="advanced-upload-progress-card" aria-label="高级图片上传状态"><span className="advanced-upload-progress-icon"><UploadIcon /></span><UploadProgressView progress={uploadProgress} label={uploading && uploadProgress.percent === 100 ? '正在创建多图展示' : uploading ? '正在上传高级图片' : '高级图片上传完成'} /></section>}
 
     <form className="advanced-upload-workspace" onSubmit={(event) => void upload(event)}>
       <section className="advanced-upload-batch" aria-labelledby="group-settings-heading">
@@ -250,7 +251,7 @@ export function AdvancedGalleryUploadPage() {
 
         <div className="advanced-upload-footer">
           <p>创建后可在画廊管理中继续调整封面、裁切焦点和展示顺序。</p>
-          <button className="button primary-button" disabled={uploading || !entries.length}>{uploading ? `正在上传 ${entries.length} 张图片…` : `创建多图展示（${entries.length} 张）`}</button><UploadProgressView progress={uploadProgress} label="高级图片上传进度" />
+          <button className="button primary-button" disabled={uploading || !entries.length}>{uploading ? `正在上传 ${entries.length} 张图片…` : `创建多图展示（${entries.length} 张）`}</button>
         </div>
       </section>
     </form>

@@ -790,20 +790,13 @@
 .gallery-upload-fields .thumbnail-focus-editor { margin-top: 0; }
 .gallery-upload-fields .button { justify-self: start; }
 .gallery-upload-submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.gallery-upload-progress-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; margin: 0 0 16px; padding: 16px 20px; border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-outline-variant)); border-radius: 18px; background: color-mix(in srgb, var(--md-sys-color-primary-container) 48%, var(--surface-container-low)); box-shadow: 0 3px 12px color-mix(in srgb, var(--md-sys-color-shadow) 6%, transparent); }
-.gallery-upload-progress-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); }
-.gallery-upload-progress-icon svg { width: 21px; height: 21px; }
-.gallery-upload-progress-card .upload-progress { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 16px; }
-.gallery-upload-progress-card .upload-progress-heading { grid-column: 1 / -1; }
-.gallery-upload-progress-card .upload-progress-track { grid-column: 1; height: 8px; align-self: center; }
-.gallery-upload-progress-card .upload-progress > small { grid-column: 2; grid-row: 2; white-space: nowrap; }
-.repository-upload-progress-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; margin: 0 0 16px; padding: 16px 20px; border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-outline-variant)); border-radius: 18px; background: color-mix(in srgb, var(--md-sys-color-primary-container) 48%, var(--surface-container-low)); box-shadow: 0 3px 12px color-mix(in srgb, var(--md-sys-color-shadow) 6%, transparent); }
-.repository-upload-progress-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); }
-.repository-upload-progress-icon svg { width: 21px; height: 21px; }
-.repository-upload-progress-card .upload-progress { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 16px; }
-.repository-upload-progress-card .upload-progress-heading { grid-column: 1 / -1; }
-.repository-upload-progress-card .upload-progress-track { grid-column: 1; height: 8px; align-self: center; }
-.repository-upload-progress-card .upload-progress > small { grid-column: 2; grid-row: 2; white-space: nowrap; }
+.gallery-upload-progress-card, .repository-upload-progress-card, .advanced-upload-progress-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; margin: 0 0 16px; padding: 16px 20px; border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-outline-variant)); border-radius: 18px; background: color-mix(in srgb, var(--md-sys-color-primary-container) 48%, var(--surface-container-low)); box-shadow: 0 3px 12px color-mix(in srgb, var(--md-sys-color-shadow) 6%, transparent); }
+.gallery-upload-progress-icon, .repository-upload-progress-icon, .advanced-upload-progress-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); }
+.gallery-upload-progress-icon svg, .repository-upload-progress-icon svg, .advanced-upload-progress-icon svg { width: 21px; height: 21px; }
+.gallery-upload-progress-card .upload-progress, .repository-upload-progress-card .upload-progress, .advanced-upload-progress-card .upload-progress { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 16px; }
+.gallery-upload-progress-card .upload-progress-heading, .repository-upload-progress-card .upload-progress-heading, .advanced-upload-progress-card .upload-progress-heading { grid-column: 1 / -1; }
+.gallery-upload-progress-card .upload-progress-track, .repository-upload-progress-card .upload-progress-track, .advanced-upload-progress-card .upload-progress-track { grid-column: 1; height: 8px; align-self: center; }
+.gallery-upload-progress-card .upload-progress > small, .repository-upload-progress-card .upload-progress > small, .advanced-upload-progress-card .upload-progress > small { grid-column: 2; grid-row: 2; white-space: nowrap; }
 .repository-admin-shell.is-zip-transferring .repository-project-upload, .repository-admin-shell.is-zip-transferring .repository-project-upload * { cursor: progress !important; }
 .gallery-admin-list .section-heading h2 { font-size: clamp(2rem, 5vw, 3.5rem); }
 .gallery-order-help { margin: 8px 0 0; color: var(--md-sys-color-on-surface-variant); font-size: .88rem; }
@@ -991,14 +984,10 @@
   .admin-nav a { flex: 0 0 auto; }
   .admin-nav .text-button { padding-inline: 10px; }
   .gallery-upload-panel { padding: 16px; }
-  .gallery-upload-progress-card { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px; }
-  .gallery-upload-progress-icon { width: 38px; height: 38px; }
-  .gallery-upload-progress-card .upload-progress { grid-template-columns: 1fr; }
-  .gallery-upload-progress-card .upload-progress-track, .gallery-upload-progress-card .upload-progress > small { grid-column: 1; grid-row: auto; }
-  .repository-upload-progress-card { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px; }
-  .repository-upload-progress-icon { width: 38px; height: 38px; }
-  .repository-upload-progress-card .upload-progress { grid-template-columns: 1fr; }
-  .repository-upload-progress-card .upload-progress-track, .repository-upload-progress-card .upload-progress > small { grid-column: 1; grid-row: auto; }
+  .gallery-upload-progress-card, .repository-upload-progress-card, .advanced-upload-progress-card { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .gallery-upload-progress-icon, .repository-upload-progress-icon, .advanced-upload-progress-icon { width: 38px; height: 38px; }
+  .gallery-upload-progress-card .upload-progress, .repository-upload-progress-card .upload-progress, .advanced-upload-progress-card .upload-progress { grid-template-columns: 1fr; }
+  .gallery-upload-progress-card .upload-progress-track, .gallery-upload-progress-card .upload-progress > small, .repository-upload-progress-card .upload-progress-track, .repository-upload-progress-card .upload-progress > small, .advanced-upload-progress-card .upload-progress-track, .advanced-upload-progress-card .upload-progress > small { grid-column: 1; grid-row: auto; }
   .gallery-upload-submit-row { align-items: stretch; flex-direction: column; }
   .gallery-upload-submit-row .button { width: 100%; justify-content: center; }
   .thumbnail-focus-editor { padding: 16px; }
