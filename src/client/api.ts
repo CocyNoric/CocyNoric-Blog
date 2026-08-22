@@ -1,4 +1,4 @@
-import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, GalleryPagePayload, HomePayload, PostPagePayload, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview, UploadProgress } from '../shared/types.js';
+import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, GalleryPagePayload, HomePayload, PostPagePayload, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview, TransferUsage, UploadProgress } from '../shared/types.js';
 import type { GalleryInput, GalleryItem, PostInput, SiteSettings } from '../shared/schemas.js';
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -190,6 +190,9 @@ export const api = {
     headers: writeHeaders(csrfToken),
   }),
   adminSettings: () => request<SiteSettings>('/api/admin/settings'),
+  traffic: () => request<TransferUsage>('/api/admin/traffic'),
+  saveTraffic: (monthlyLimitGb: number, csrfToken: string) => request<TransferUsage>('/api/admin/traffic', { method: 'PUT', headers: writeHeaders(csrfToken), body: JSON.stringify({ monthlyLimitGb }) }),
+  resetTraffic: (csrfToken: string) => request<TransferUsage>('/api/admin/traffic/reset', { method: 'POST', headers: writeHeaders(csrfToken) }),
   saveSettings: (settings: SiteSettings, csrfToken: string) => request<SiteSettings>('/api/admin/settings', {
     method: 'PUT',
     headers: writeHeaders(csrfToken),
