@@ -1,4 +1,4 @@
-import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, GalleryPagePayload, HomePayload, PostPagePayload, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview } from '../shared/types.js';
+import type { AdminPost, AuthState, CodeToolAdminProject, CodeToolProjectListing, GalleryPagePayload, HomePayload, PostPagePayload, PostSummary, PublicCodeTool, PublicPost, PublicSettings, RepositoryAreaKey, RepositoryListing, RepositoryOverview, TransferUsage, UploadProgress } from '../shared/types.js';
 import type { GalleryInput, GalleryItem, PostInput, SiteSettings } from '../shared/schemas.js';
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -37,6 +37,30 @@ async function request<T>(path: string, options?: RequestInit) {
 
 function writeHeaders(csrfToken: string) {
   return { 'X-CSRF-Token': csrfToken };
+}
+
+function uploadRequest<T>(path: string, body: FormData, csrfToken: string, onProgress?: (progress: UploadProgress) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const estimatedTotal = [...body.entries()].reduce((sum, [, value]) => sum + (value instanceof File ? value.size : new Blob([value]).size), 0);
+    xhr.open('POST', path);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+    xhr.upload.addEventListener('progress', (event) => {
+      const total = event.lengthComputable ? event.total : estimatedTotal;
+      const loaded = event.loaded;
+      onProgress?.({ loaded, total: total || loaded, percent: total ? Math.min(100, Math.round((loaded / total) * 100)) : 0 });
+    });
+    xhr.addEventListener('error', () => reject(new Error('无法连接博客服务，请确认后端服务已启动并刷新页面后重试。')));
+    xhr.addEventListener('abort', () => reject(new Error('上传已中断')));
+    xhr.addEventListener('load', () => {
+      let value: { error?: string } & T;
+      try { value = JSON.parse(xhr.responseText) as { error?: string } & T; } catch { reject(new Error(`服务器响应格式无效（${xhr.status}）`)); return; }
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress?.({ loaded: estimatedTotal, total: estimatedTotal, percent: 100 }); resolve(value as T); return; }
+      reject(new Error(value.error ?? `请求失败（${xhr.status}）`));
+    });
+    xhr.send(body);
+  });
 }
 
 function appendGalleryFields(body: FormData, input: GalleryInput) {
@@ -92,25 +116,21 @@ export const api = {
   adminCodeTools: () => request<PublicCodeTool[]>('/api/admin/repository/code-tools'),
   adminCodeToolProjects: () => request<CodeToolAdminProject[]>('/api/admin/repository/code-tools/projects'),
   adminCodeToolProject: (slug: string, pathname = '') => request<CodeToolProjectListing>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}${pathname ? `?path=${encodeURIComponent(pathname)}` : ''}`),
-  uploadCodeToolProject: (input: { projectName: string; description?: string; mode: 'folder' | 'zip'; zipMode: 'extract' | 'keep'; files: File[] }, csrfToken: string) => {
+  uploadCodeToolProject: (input: { projectName: string; description?: string; mode: 'folder' | 'zip'; zipMode: 'extract' | 'keep'; files: File[] }, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('projectName', input.projectName);
     body.append('description', input.description ?? '');
     body.append('mode', input.mode);
     body.append('zipMode', input.zipMode);
     input.files.forEach((file) => body.append('files', file, input.mode === 'folder' ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : file.name));
-    return request<CodeToolAdminProject>('/api/admin/repository/code-tools/projects', { method: 'POST', headers: writeHeaders(csrfToken), body });
+    return uploadRequest<CodeToolAdminProject>('/api/admin/repository/code-tools/projects', body, csrfToken, onProgress);
   },
   deleteCodeToolProject: (slug: string, csrfToken: string) => request<void>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: writeHeaders(csrfToken) }),
   deleteCodeToolProjectEntry: (slug: string, pathname: string, csrfToken: string) => request<CodeToolAdminProject>(`/api/admin/repository/code-tools/projects/${encodeURIComponent(slug)}/entries?path=${encodeURIComponent(pathname)}`, { method: 'DELETE', headers: writeHeaders(csrfToken) }),
-  uploadCodeTool: (file: File, csrfToken: string) => {
+  uploadCodeTool: (file: File, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('file', file);
-    return request<PublicCodeTool>('/api/admin/repository/code-tools', {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<PublicCodeTool>('/api/admin/repository/code-tools', body, csrfToken, onProgress);
   },
   deleteCodeTool: (id: string, csrfToken: string) => request<void>(`/api/admin/repository/code-tools/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -137,35 +157,23 @@ export const api = {
     method: 'DELETE',
     headers: writeHeaders(csrfToken),
   }),
-  importPost: (file: File, csrfToken: string) => {
+  importPost: (file: File, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('article', file);
-    return request<AdminPost>('/api/admin/posts/import', {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<AdminPost>('/api/admin/posts/import', body, csrfToken, onProgress);
   },
-  uploadGalleryItem: (input: GalleryInput, file: File, csrfToken: string) => {
+  uploadGalleryItem: (input: GalleryInput, file: File, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('image', file);
     appendGalleryFields(body, input);
-    return request<GalleryItem>('/api/admin/gallery', {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<GalleryItem>('/api/admin/gallery', body, csrfToken, onProgress);
   },
-  uploadGalleryGroup: (input: GalleryInput, files: File[], coverIndex: number, csrfToken: string) => {
+  uploadGalleryGroup: (input: GalleryInput, files: File[], coverIndex: number, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     files.forEach((file) => body.append('images', file, file.name));
     appendGalleryFields(body, input);
     body.append('coverIndex', String(coverIndex));
-    return request<GalleryItem>('/api/admin/gallery/group', {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<GalleryItem>('/api/admin/gallery/group', body, csrfToken, onProgress);
   },
   reorderGallery: (ids: string[], csrfToken: string) => request<GalleryItem[]>('/api/admin/gallery/order', {
     method: 'PUT',
@@ -182,28 +190,23 @@ export const api = {
     headers: writeHeaders(csrfToken),
   }),
   adminSettings: () => request<SiteSettings>('/api/admin/settings'),
+  traffic: () => request<TransferUsage>('/api/admin/traffic'),
+  saveTraffic: (monthlyLimitGb: number, csrfToken: string) => request<TransferUsage>('/api/admin/traffic', { method: 'PUT', headers: writeHeaders(csrfToken), body: JSON.stringify({ monthlyLimitGb }) }),
+  resetTraffic: (csrfToken: string) => request<TransferUsage>('/api/admin/traffic/reset', { method: 'POST', headers: writeHeaders(csrfToken) }),
   saveSettings: (settings: SiteSettings, csrfToken: string) => request<SiteSettings>('/api/admin/settings', {
     method: 'PUT',
     headers: writeHeaders(csrfToken),
     body: JSON.stringify(settings),
   }),
-  uploadPostImage: (postId: string, file: File, csrfToken: string) => {
+  uploadPostImage: (postId: string, file: File, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('image', file);
     body.append('postId', postId);
-    return request<{ url: string }>('/api/admin/media', {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<{ url: string }>('/api/admin/media', body, csrfToken, onProgress);
   },
-  uploadSettingMedia: (kind: 'profileAvatar' | 'webIcon' | 'background' | 'repositoryBackground', file: File, csrfToken: string) => {
+  uploadSettingMedia: (kind: 'profileAvatar' | 'webIcon' | 'background' | 'repositoryBackground', file: File, csrfToken: string, onProgress?: (progress: UploadProgress) => void) => {
     const body = new FormData();
     body.append('image', file);
-    return request<SiteSettings>(`/api/admin/settings/media/${kind}`, {
-      method: 'POST',
-      headers: writeHeaders(csrfToken),
-      body,
-    });
+    return uploadRequest<SiteSettings>(`/api/admin/settings/media/${kind}`, body, csrfToken, onProgress);
   },
 };

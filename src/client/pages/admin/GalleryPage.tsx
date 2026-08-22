@@ -12,6 +12,8 @@ import { SortableGalleryImageQueue } from '../../components/SortableGalleryImage
 import { TagInput } from '../../components/TagInput.js';
 import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
+import type { UploadProgress } from '../../../shared/types.js';
+import { UploadProgress as UploadProgressView } from '../../components/UploadProgress.js';
 
 import { buildGridSlotLayout, moveIntoVisualSlot, slotIndexForPoint, type GridSlotLayout } from './galleryDragSlots.js';
 
@@ -73,6 +75,7 @@ export function GalleryPage() {
   const [thumbnailAspectRatio, setThumbnailAspectRatio] = useState<ThumbnailAspectRatio>('1:1');
   const [cropPositioning, setCropPositioning] = useState<'center'>('center');
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [pendingDelete, setPendingDelete] = useState<GalleryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<GalleryItem | null>(null);
@@ -214,14 +217,14 @@ export function GalleryPage() {
   const upload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!file) { setError('请选择要上传的图片'); return; }
-    setBusy(true); setError(''); setMessage('');
+    setBusy(true); setUploadProgress({ loaded: 0, total: file.size, percent: 0 }); setError(''); setMessage('');
     try {
-      const item = await api.uploadGalleryItem({ title, description, category: galleryCategoryFromTags(tags), tags, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken);
+      const item = await api.uploadGalleryItem({ title, description, category: galleryCategoryFromTags(tags), tags, cardFocus, cardAspectRatio, thumbnailFocus, thumbnailAspectRatio, cropPositioning }, file, csrfToken, setUploadProgress);
       setItems((current) => [item, ...current]);
       setTitle(''); setDescription(''); setTags([]); setFile(null); setCardFocus({ x: 0.5, y: 0.5, size: 1 }); setCardAspectRatio('original'); setThumbnailFocus({ x: 0.5, y: 0.5, size: 1 }); setThumbnailAspectRatio('1:1'); setCropPositioning('center');
       setMessage('图片已上传并发布到首页画廊。');
     } catch (cause) {
-      setError((cause as Error).message);
+      setError((cause as Error).message); setUploadProgress(null);
     } finally {
       setBusy(false);
     }
@@ -433,6 +436,7 @@ export function GalleryPage() {
     <div className="admin-heading"><div><p className="eyebrow">媒体管理</p><h1>画廊</h1><p>上传图片后会立即显示在首页画廊。</p></div></div>
     {error && <div className="message error-message" role="alert">{error}</div>}
     {message && <div className="message success-message" role="status">{message}</div>}
+    {uploadProgress && <section className="gallery-upload-progress-card" aria-label="图片上传状态"><span className="gallery-upload-progress-icon"><UploadIcon /></span><UploadProgressView progress={uploadProgress} label={busy ? '正在上传画廊图片' : '图片上传完成'} /></section>}
 
     <form className="gallery-upload-panel" onSubmit={upload}>
       <ImageDropField
@@ -485,7 +489,7 @@ export function GalleryPage() {
             onKeyDown={(event) => handleKeyboardOrder(event, entry)}
           ><DragHandleIcon /></button>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(entry)) }}><GalleryCropImage src={entry.url} alt={entry.title} loading="lazy" focus={entry.cardFocus} aspectRatio={entry.cardAspectRatio} cropPositioning={entry.cropPositioning} width={entry.width} height={entry.height} />{entry.images.length > 1 && <span className="gallery-image-count">{entry.images.length} 张</span>}</div>
-          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}</div>
+          <div className="gallery-admin-copy">{entryTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{entryTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{entry.title}</h3></div>
           <div className="gallery-card-actions">
             <button className="icon-button" type="button" disabled={savingOrder} onClick={() => beginEdit(entry)} aria-label={`编辑${entry.title}`}><EditIcon /></button>
             <button className="icon-button danger" type="button" disabled={savingOrder} onClick={() => setPendingDelete(entry)} aria-label={`删除${entry.title}`}><TrashIcon /></button>
@@ -497,7 +501,7 @@ export function GalleryPage() {
         const itemTags = item ? tagsByItem.get(item.id) ?? [] : [];
         return item ? <article ref={overlayRef} aria-hidden="true" className="gallery-sort-overlay" style={{ width: pointerPreview.source.width }}>
           <div className="gallery-admin-visual" style={{ aspectRatio: String(galleryCardAspectRatio(item)) }}><GalleryCropImage src={item.url} alt="" focus={item.cardFocus} aspectRatio={item.cardAspectRatio} cropPositioning={item.cropPositioning} width={item.width} height={item.height} /></div>
-          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3>{item.description && <p>{item.description}</p>}</div>
+          <div className="gallery-admin-copy">{itemTags.length > 0 && <div className="gallery-admin-tags" aria-label="标签">{itemTags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}<h3>{item.title}</h3></div>
         </article> : null;
       })()}
     </section>

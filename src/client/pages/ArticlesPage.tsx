@@ -59,6 +59,6 @@ export function ArticlesPage() {
   }, [query, settings.contentVisibility.gallery]);
 
   return <main id="main" className="page-shell listing-shell">
-    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" railOpen={railOpen} onRailOpenChange={setRailOpen} showResultStatus={false} showArticles={settings.contentVisibility.articles} plain />
+    <ArticleSection posts={posts} galleryItems={gallery} galleryLoading={galleryLoading} galleryError={galleryError} loading={loading} error={error} headingLevel="h1" railOpen={railOpen} onRailOpenChange={setRailOpen} showResultStatus={false} showArticles={settings.contentVisibility.articles} showGallery={settings.contentVisibility.gallery} plain />
   </main>;
 }

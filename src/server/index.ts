@@ -3,8 +3,10 @@ import { createApp } from './app.js';
 import { config } from './config.js';
 import { dataStore } from './dataStore.js';
 import { optimizeStoredSettingMedia } from './media.js';
+import { trafficStore } from './traffic.js';
 
 await dataStore.initialize();
+await trafficStore.setLimit((await dataStore.readSettings()).transferQuota.monthlyLimitGb);
 await optimizeStoredSettingMedia();
 await cleanExpiredSessions();
 setInterval(() => void cleanExpiredSessions(), 60 * 60 * 1000).unref();

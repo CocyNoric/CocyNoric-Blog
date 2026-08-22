@@ -25,13 +25,15 @@ type ArticleSectionProps = {
   onRailOpenChange?: (open: boolean) => void;
   showResultStatus?: boolean;
   showArticles?: boolean;
+  showGallery?: boolean;
   plain?: boolean;
 };
 
-export function ArticleSection({ posts, galleryItems = [], galleryLoading = false, galleryError = '', loading, error = '', headingLevel = 'h2', limit, moreLink, surfaceOpacity, railOpen = false, onRailOpenChange, showResultStatus = true, showArticles = true, plain = false }: ArticleSectionProps) {
+export function ArticleSection({ posts, galleryItems = [], galleryLoading = false, galleryError = '', loading, error = '', headingLevel = 'h2', limit, moreLink, surfaceOpacity, railOpen = false, onRailOpenChange, showResultStatus = true, showArticles = true, showGallery = false, plain = false }: ArticleSectionProps) {
   const Heading = headingLevel;
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
+  const isSearching = Boolean(query.trim());
   const activeCategory = searchParams.get('category') ?? '';
   const allCategories = useMemo(() => showArticles ? summarizeCategoryPaths(posts.map((post) => post.category)) : [], [posts, showArticles]);
   const filteredPosts = useMemo(() => {
@@ -74,8 +76,7 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
     </div>
     {showResultStatus && <p className="result-status" aria-live="polite">{loading ? '正在载入文章' : query ? `共 ${filteredPosts.length} 篇文章、${galleryLoading ? '…' : filteredGallery.length} 个画廊展示` : `共 ${filteredPosts.length} 篇文章`}</p>}
     {error && <div className="message error-message" role="alert">{error}</div>}
-    {galleryError && <div className="message error-message" role="alert">画廊搜索暂时无法载入：{galleryError}</div>}
-    {!loading && !galleryLoading && !error && !galleryError && filteredPosts.length === 0 && filteredGallery.length === 0 && <div className="empty-state">
+    {!loading && !error && showArticles && filteredPosts.length === 0 && <div className="empty-state">
       <h2>没有找到相关内容</h2><p>换一个关键词，或者清除当前筛选。</p><button className="button secondary-button" onClick={clearFilters}>清除筛选</button>
     </div>}
     {showArticles && limit === undefined && filteredPosts.length > 0
@@ -85,7 +86,16 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
         rail={articleRail}
       />
       : showArticles ? articleGrid : null}
-    {filteredGallery.length > 0 && <div className="search-gallery-results"><div className="section-heading"><div><p className="eyebrow">Gallery</p><h2>画廊</h2></div></div><div className="gallery-grid">{filteredGallery.map((item) => <GalleryCard item={item} key={item.id} />)}</div></div>}
+    {isSearching && showGallery && <div className="search-gallery-results">
+      <div className="section-heading"><div><p className="eyebrow">Gallery</p><h2>画廊</h2></div></div>
+      {galleryLoading
+        ? <p className="loading-state" aria-live="polite">正在搜索画廊</p>
+        : galleryError
+          ? <div className="message error-message" role="alert">画廊搜索暂时无法载入：{galleryError}</div>
+          : filteredGallery.length > 0
+            ? <div className="gallery-grid">{filteredGallery.map((item) => <GalleryCard item={item} key={item.id} />)}</div>
+            : <div className="empty-state"><h3>没有找到相关画廊</h3><p>没有画廊展示匹配“{query.trim()}”。</p></div>}
+    </div>}
     {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>Read more<ArrowIcon /></Link></div>}
   </section>;
 }

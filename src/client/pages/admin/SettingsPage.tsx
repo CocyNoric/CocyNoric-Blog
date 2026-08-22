@@ -4,6 +4,7 @@ import type { SiteSettings } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
 import { CheckIcon, ImageIcon, RefreshIcon } from '../../components/Icons.js';
+import type { TransferUsage } from '../../../shared/types.js';
 import { ImageDropField } from '../../components/ImageDropField.js';
 import { SelectField } from '../../components/SelectField.js';
 import { useAuth } from '../../hooks/useAuth.js';
@@ -60,6 +61,8 @@ export function SettingsPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [traffic, setTraffic] = useState<TransferUsage | null>(null);
+  const [trafficBusy, setTrafficBusy] = useState(false);
 
   const requestedTab = searchParams.get('tab');
   const activeTab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'base';
@@ -69,6 +72,7 @@ export function SettingsPage() {
   }, [requestedTab, setSearchParams]);
 
   useEffect(() => { void api.adminSettings().then(setSettings).catch((cause: Error) => setError(cause.message)); }, []);
+  useEffect(() => { void api.traffic().then(setTraffic).catch((cause: Error) => setError(cause.message)); }, []);
 
   if (!settings) return <main id="main" className="page-shell admin-shell"><AdminNav /><p className="loading-state">正在载入站点设置…</p>{error && <div className="message error-message">{error}</div>}</main>;
 
@@ -77,6 +81,7 @@ export function SettingsPage() {
   const updateGallery = <K extends keyof SiteSettings['browsing']['gallery']>(key: K, value: SiteSettings['browsing']['gallery'][K]) => setSettings((current) => current ? { ...current, browsing: { ...current.browsing, gallery: { ...current.browsing.gallery, [key]: value } } } : current);
   const updateVisibility = <K extends keyof SiteSettings['contentVisibility']>(key: K, value: SiteSettings['contentVisibility'][K]) => setSettings((current) => current ? { ...current, contentVisibility: { ...current.contentVisibility, [key]: value } } : current);
   const updateRepositoryAppearance = <K extends keyof SiteSettings['repositoryAppearance']>(key: K, value: SiteSettings['repositoryAppearance'][K]) => setSettings((current) => current ? { ...current, repositoryAppearance: { ...current.repositoryAppearance, [key]: value } } : current);
+  const updateQuota = (monthlyLimitGb: number) => setSettings((current) => current ? { ...current, transferQuota: { monthlyLimitGb } } : current);
   const backgroundVisibility = Math.round((1 - settings.backgroundOverlay) * 100);
 
   const save = async (event: FormEvent) => {
@@ -101,6 +106,23 @@ export function SettingsPage() {
     } catch (cause) { setError((cause as Error).message); }
     finally { setUploading(false); }
   };
+
+  const saveTraffic = async () => {
+    if (!traffic) return;
+    setTrafficBusy(true); setError('');
+    try { setTraffic(await api.saveTraffic(settings.transferQuota.monthlyLimitGb, csrfToken)); setMessage('上传下载总量设置已保存。'); }
+    catch (cause) { setError((cause as Error).message); }
+    finally { setTrafficBusy(false); }
+  };
+
+  const resetTraffic = async () => {
+    setTrafficBusy(true); setError('');
+    try { setTraffic(await api.resetTraffic(csrfToken)); setMessage('本月上传下载用量已重置。'); }
+    catch (cause) { setError((cause as Error).message); }
+    finally { setTrafficBusy(false); }
+  };
+
+  const formatBytes = (value: number) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GB` : `${(value / 1024 ** 2).toFixed(1)} MB`;
 
   const renderBase = () => <div className="settings-grid">
     <section className="settings-section"><h2>站点资料</h2>
@@ -149,6 +171,15 @@ export function SettingsPage() {
         <RangeSetting label="背景可见度" value={backgroundVisibility} defaultValue={14} min={0} max={100} suffix="%" onChange={(value) => update('backgroundOverlay', Number((1 - value / 100).toFixed(2)))} help="数值越高，背景越明显；较高数值可能降低正文可读性" />
         <RangeSetting label="背景模糊" value={settings.backgroundBlur} defaultValue={0} min={0} max={16} suffix="px" onChange={(value) => update('backgroundBlur', value)} />
       </div>
+    </section>
+    <section className="settings-section span-2 traffic-settings-section"><div className="traffic-section-heading"><div><h2>上传下载总量</h2><p className="settings-help">上传文章、图片、画廊和仓库文件，以及访客下载文件都会计入每月总量。</p></div>{traffic && <span className="traffic-period">{traffic.period}</span>}</div>
+      <RangeSetting label="每月总量上限" value={settings.transferQuota.monthlyLimitGb} defaultValue={50} min={1} max={1000} step={1} suffix=" GB" onChange={updateQuota} />
+      {traffic && <div className="traffic-overview">
+        <div className="traffic-balance"><span>本月剩余</span><strong>{formatBytes(traffic.remainingBytes)}</strong><small>总额度 {traffic.monthlyLimitGb} GB</small></div>
+        <div className="traffic-meter"><div><span>本月使用进度</span><strong>{traffic.limitBytes ? (traffic.usedBytes / traffic.limitBytes * 100).toFixed(1) : '0.0'}%</strong></div><div className="upload-progress-track"><span style={{ width: `${Math.min(100, traffic.limitBytes ? traffic.usedBytes / traffic.limitBytes * 100 : 0)}%` }} /></div></div>
+        <div className="traffic-stats"><div><span>上传</span><strong>{formatBytes(traffic.uploadedBytes)}</strong></div><div><span>下载</span><strong>{formatBytes(traffic.downloadedBytes)}</strong></div><div><span>合计使用</span><strong>{formatBytes(traffic.usedBytes)}</strong></div></div>
+        <div className="traffic-actions"><button type="button" className="button primary-button" disabled={trafficBusy} onClick={() => void saveTraffic()}>保存额度</button><button type="button" className="button secondary-button" disabled={trafficBusy} onClick={() => void resetTraffic()}>重置本月用量</button></div>
+      </div>}
     </section>
   </div>;
 

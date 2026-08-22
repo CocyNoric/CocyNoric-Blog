@@ -10,6 +10,8 @@ import { ImageIcon } from '../../components/Icons.js';
 import { SelectField } from '../../components/SelectField.js';
 import { validateImageFile } from '../../components/ImageDropField.js';
 import { useAuth } from '../../hooks/useAuth.js';
+import type { UploadProgress } from '../../../shared/types.js';
+import { UploadProgress as UploadProgressView } from '../../components/UploadProgress.js';
 
 const emptyPost: PostInput = {
   slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), status: 'draft', category: '未分类', tags: [], markdown: '',
@@ -25,6 +27,7 @@ export function EditorPage() {
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageProgress, setImageProgress] = useState<UploadProgress | null>(null);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [loadState, setLoadState] = useState<'new' | 'loading' | 'loaded' | 'error'>(id ? 'loading' : 'new');
@@ -93,13 +96,14 @@ export function EditorPage() {
     setError('');
     setMessage('');
     setUploadingImage(true);
+    setImageProgress({ loaded: 0, total: file.size, percent: 0 });
     try {
       validateImageFile(file);
-      const { url } = await api.uploadPostImage(id, file, csrfToken);
+      const { url } = await api.uploadPostImage(id, file, csrfToken, setImageProgress);
       setPost((current) => ({ ...current, markdown: `${current.markdown}${current.markdown.endsWith('\n') || !current.markdown ? '' : '\n'}![图片说明](${url})\n` }));
       setDirty(true);
     } catch (cause) {
-      setError((cause as Error).message);
+      setError((cause as Error).message); setImageProgress(null);
     } finally {
       setUploadingImage(false);
     }
@@ -162,7 +166,7 @@ export function EditorPage() {
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setImageDragActive(false); }}
           onDrop={dropImage}
-        ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
+        ><div className="pane-label"><span>Markdown</span><span className="editor-upload-wrap"><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label><UploadProgressView progress={imageProgress} label="图片上传进度" /></span></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
         <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: preview }} /></section>
       </div>
       </>}

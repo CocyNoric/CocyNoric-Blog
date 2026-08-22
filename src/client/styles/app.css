@@ -387,7 +387,7 @@
 .repository-manager-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
 .repository-manager-toolbar > div { display: grid; min-width: 0; gap: 3px; }
 .repository-manager-toolbar small { overflow: hidden; color: var(--md-sys-color-on-surface-variant); text-overflow: ellipsis; white-space: nowrap; }
-.repository-manager-breadcrumbs { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.repository-manager-breadcrumbs { width: 100%; min-height: 54px; margin: 0; padding: 12px 18px; border: 0; border-bottom: 1px solid var(--md-sys-color-outline-variant); border-radius: 0; background: color-mix(in srgb, var(--surface-container) 72%, transparent); box-shadow: none; backdrop-filter: none; }
 .repository-manager-breadcrumbs button { padding: 2px 0; border: 0; color: var(--md-sys-color-primary); background: transparent; cursor: pointer; font: inherit; }
 .repository-manager-breadcrumbs button:hover { text-decoration: underline; }
 .repository-manager-content .repository-entry-list { display: block; border: 0; border-radius: 0; background: transparent; }
@@ -731,6 +731,29 @@
 .settings-save-bar .primary-button { min-width: 132px; flex: 0 0 auto; }
 .settings-shell form > .message { margin: 0 0 20px; }
 .upload-control { position: relative; display: flex; align-items: center; gap: 16px; padding: 14px; border: 1px dashed var(--md-sys-color-outline); border-radius: var(--radius-medium); cursor: pointer; }
+.upload-control-with-progress, .editor-upload-wrap { display: inline-grid; gap: 8px; align-items: start; }
+.upload-progress { display: grid; gap: 4px; min-width: 180px; color: var(--md-sys-color-on-surface-variant); font-size: .75rem; }
+.upload-progress-heading { display: flex; justify-content: space-between; gap: 10px; }
+.upload-progress-heading strong { color: var(--md-sys-color-primary); }
+.upload-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--md-sys-color-surface-container-highest); }
+.upload-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--md-sys-color-primary); transition: width .15s ease; }
+.traffic-settings-section { padding-bottom: 24px; }
+.traffic-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.traffic-section-heading h2 { padding-bottom: 12px; }
+.traffic-section-heading .settings-help { padding-bottom: 20px; }
+.traffic-period { flex: 0 0 auto; margin-top: 22px; padding: 6px 11px; border-radius: 999px; color: var(--md-sys-color-on-secondary-container); background: var(--md-sys-color-secondary-container); font-size: .76rem; font-weight: 750; }
+.traffic-overview { display: grid; grid-template-columns: minmax(210px, .36fr) minmax(0, 1fr); gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.traffic-balance { grid-row: span 2; display: grid; align-content: center; gap: 5px; padding: 20px; border-radius: 18px; color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container); }
+.traffic-balance span, .traffic-balance small { opacity: .78; }
+.traffic-balance strong { font-size: clamp(1.55rem, 3vw, 2.2rem); line-height: 1.1; letter-spacing: -.04em; }
+.traffic-meter { display: grid; gap: 10px; padding: 16px 18px; border-radius: 18px; background: var(--surface-container-lowest); }
+.traffic-meter > div:first-child { display: flex; justify-content: space-between; gap: 16px; color: var(--md-sys-color-on-surface-variant); font-size: .84rem; }
+.traffic-meter strong { color: var(--md-sys-color-primary); }
+.traffic-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.traffic-stats > div { min-width: 0; display: grid; gap: 4px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 76%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--surface-container-lowest) 74%, transparent); }
+.traffic-stats span { color: var(--md-sys-color-on-surface-variant); font-size: .76rem; }
+.traffic-stats strong { overflow: hidden; font-size: .96rem; text-overflow: ellipsis; white-space: nowrap; }
+.traffic-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
 .settings-shell .upload-control { min-height: 104px; border-color: var(--md-sys-color-outline); background: var(--md-sys-color-surface); }
 .settings-shell .upload-control:hover { border-color: var(--md-sys-color-primary); background: color-mix(in srgb, var(--md-sys-color-primary-container) 42%, var(--md-sys-color-surface)); }
 .upload-control:hover { background: var(--surface-container); }
@@ -767,6 +790,14 @@
 .gallery-upload-fields .thumbnail-focus-editor { margin-top: 0; }
 .gallery-upload-fields .button { justify-self: start; }
 .gallery-upload-submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.gallery-upload-progress-card, .repository-upload-progress-card, .advanced-upload-progress-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; margin: 0 0 16px; padding: 16px 20px; border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-outline-variant)); border-radius: 18px; background: color-mix(in srgb, var(--md-sys-color-primary-container) 48%, var(--surface-container-low)); box-shadow: 0 3px 12px color-mix(in srgb, var(--md-sys-color-shadow) 6%, transparent); }
+.gallery-upload-progress-icon, .repository-upload-progress-icon, .advanced-upload-progress-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); }
+.gallery-upload-progress-icon svg, .repository-upload-progress-icon svg, .advanced-upload-progress-icon svg { width: 21px; height: 21px; }
+.gallery-upload-progress-card .upload-progress, .repository-upload-progress-card .upload-progress, .advanced-upload-progress-card .upload-progress { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 16px; }
+.gallery-upload-progress-card .upload-progress-heading, .repository-upload-progress-card .upload-progress-heading, .advanced-upload-progress-card .upload-progress-heading { grid-column: 1 / -1; }
+.gallery-upload-progress-card .upload-progress-track, .repository-upload-progress-card .upload-progress-track, .advanced-upload-progress-card .upload-progress-track { grid-column: 1; height: 8px; align-self: center; }
+.gallery-upload-progress-card .upload-progress > small, .repository-upload-progress-card .upload-progress > small, .advanced-upload-progress-card .upload-progress > small { grid-column: 2; grid-row: 2; white-space: nowrap; }
+.repository-admin-shell.is-zip-transferring .repository-project-upload, .repository-admin-shell.is-zip-transferring .repository-project-upload * { cursor: progress !important; }
 .gallery-admin-list .section-heading h2 { font-size: clamp(2rem, 5vw, 3.5rem); }
 .gallery-order-help { margin: 8px 0 0; color: var(--md-sys-color-on-surface-variant); font-size: .88rem; }
 .gallery-admin-card { position: relative; overflow: hidden; border-radius: var(--radius-large); background: var(--surface-container-low); transition: transform .18s var(--motion-standard), box-shadow .18s var(--motion-standard), opacity .18s var(--motion-standard); }
@@ -953,6 +984,10 @@
   .admin-nav a { flex: 0 0 auto; }
   .admin-nav .text-button { padding-inline: 10px; }
   .gallery-upload-panel { padding: 16px; }
+  .gallery-upload-progress-card, .repository-upload-progress-card, .advanced-upload-progress-card { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .gallery-upload-progress-icon, .repository-upload-progress-icon, .advanced-upload-progress-icon { width: 38px; height: 38px; }
+  .gallery-upload-progress-card .upload-progress, .repository-upload-progress-card .upload-progress, .advanced-upload-progress-card .upload-progress { grid-template-columns: 1fr; }
+  .gallery-upload-progress-card .upload-progress-track, .gallery-upload-progress-card .upload-progress > small, .repository-upload-progress-card .upload-progress-track, .repository-upload-progress-card .upload-progress > small, .advanced-upload-progress-card .upload-progress-track, .advanced-upload-progress-card .upload-progress > small { grid-column: 1; grid-row: auto; }
   .gallery-upload-submit-row { align-items: stretch; flex-direction: column; }
   .gallery-upload-submit-row .button { width: 100%; justify-content: center; }
   .thumbnail-focus-editor { padding: 16px; }
@@ -1008,6 +1043,13 @@
   .background-upload { flex-direction: column; }
   .background-preview { width: 100%; height: 150px; }
   .background-controls { grid-template-columns: 1fr; }
+  .traffic-section-heading { align-items: flex-start; flex-direction: column; gap: 0; }
+  .traffic-period { margin: -10px 0 16px; }
+  .traffic-overview { grid-template-columns: 1fr; }
+  .traffic-balance { grid-row: auto; }
+  .traffic-stats { grid-template-columns: 1fr; }
+  .traffic-actions { justify-content: stretch; }
+  .traffic-actions .button { flex: 1 1 auto; }
   .advanced-upload-heading { align-items: stretch; }
   .advanced-upload-heading > .button { width: 100%; }
   .advanced-upload-batch, .advanced-upload-queue { padding: 20px 16px; }
