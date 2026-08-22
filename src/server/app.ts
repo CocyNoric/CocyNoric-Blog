@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { ZodError } from 'zod';
 import { config } from './config.js';
 import { serveGalleryMedia, serveMarkdownMedia, serveMedia } from './media.js';
+import { accountDownload } from './traffic.js';
 import { adminRouter } from './routes/admin.js';
 import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/public.js';
@@ -33,13 +34,13 @@ export function createApp() {
     res.status(200).json({ status: 'ok' });
   });
 
-  app.get('/media/gallery/:id/:filename', (req, res, next) => {
+  app.get('/media/gallery/:id/:filename', accountDownload, (req, res, next) => {
     void serveGalleryMedia(req, res).catch(next);
   });
-  app.get('/media/markdown/{*path}', (req, res, next) => {
+  app.get('/media/markdown/{*path}', accountDownload, (req, res, next) => {
     void serveMarkdownMedia(req, res).catch(next);
   });
-  app.get('/media/:filename', (req, res, next) => {
+  app.get('/media/:filename', accountDownload, (req, res, next) => {
     void serveMedia(req, res).catch(next);
   });
   app.use('/api', publicRouter);

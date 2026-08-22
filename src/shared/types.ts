@@ -102,6 +102,22 @@ export type AuthState = {
   csrfToken?: string;
 };
 
+export type TransferUsage = {
+  period: string;
+  monthlyLimitGb: number;
+  limitBytes: number;
+  uploadedBytes: number;
+  downloadedBytes: number;
+  usedBytes: number;
+  remainingBytes: number;
+};
+
+export type UploadProgress = {
+  loaded: number;
+  total: number;
+  percent: number;
+};
+
 export type ApiError = {
   error: string;
   issues?: string[];

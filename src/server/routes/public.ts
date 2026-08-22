@@ -8,6 +8,7 @@ import { galleryIncludesTag } from '../../shared/galleryTags.js';
 import { serveCodeToolDownload, serveCodeToolProjectArchiveDownload, serveCodeToolProjectDownload } from '../codeTools.js';
 import { repositoryOverview, repositoryTree } from '../repositoryStore.js';
 import { archiveCapacityGuard, archiveDownloadLimiter } from '../archiveProtection.js';
+import { accountDownload } from '../traffic.js';
 import type { AdminPost } from '../../shared/types.js';
 
 export const publicRouter = Router();
@@ -68,13 +69,13 @@ publicRouter.get('/repository/code-tools', async (_req, res, next) => {
   }
 });
 
-publicRouter.get('/repository/code-tools/projects/:slug/archive', archiveDownloadLimiter, archiveCapacityGuard, async (req, res, next) => {
+publicRouter.get('/repository/code-tools/projects/:slug/archive', archiveDownloadLimiter, archiveCapacityGuard, accountDownload, async (req, res, next) => {
   try { await serveCodeToolProjectArchiveDownload(req, res); } catch (error) { next(error); }
 });
-publicRouter.get('/repository/code-tools/projects/:slug/download/*path', async (req, res, next) => {
+publicRouter.get('/repository/code-tools/projects/:slug/download/*path', accountDownload, async (req, res, next) => {
   try { await serveCodeToolProjectDownload(req, res); } catch (error) { next(error); }
 });
-publicRouter.get('/repository/code-tools/:id/download/:filename', async (req, res, next) => {
+publicRouter.get('/repository/code-tools/:id/download/:filename', accountDownload, async (req, res, next) => {
   try {
     await serveCodeToolDownload(req, res);
   } catch (error) {
