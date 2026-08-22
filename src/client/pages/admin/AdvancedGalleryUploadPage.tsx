@@ -10,6 +10,8 @@ import { SortableGalleryImageQueue } from '../../components/SortableGalleryImage
 import { TagInput } from '../../components/TagInput.js';
 import { ThumbnailFocalSelector } from '../../components/ThumbnailFocalSelector.js';
 import { useAuth } from '../../hooks/useAuth.js';
+import type { UploadProgress } from '../../../shared/types.js';
+import { UploadProgress as UploadProgressView } from '../../components/UploadProgress.js';
 
 const maximumFileCount = 30;
 const maximumFileBytes = 25 * 1024 * 1024;
@@ -44,6 +46,7 @@ export function AdvancedGalleryUploadPage() {
   const [thumbnailFocus, setThumbnailFocus] = useState({ x: 0.5, y: 0.5, size: 1 });
   const [thumbnailAspectRatio, setThumbnailAspectRatio] = useState<ThumbnailAspectRatio>('1:1');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [uploadedItem, setUploadedItem] = useState<GalleryItem | null>(null);
@@ -157,11 +160,12 @@ export function AdvancedGalleryUploadPage() {
       cropPositioning: 'center',
     };
     setUploading(true);
+    setUploadProgress({ loaded: 0, total: entries.reduce((sum, entry) => sum + entry.file.size, 0), percent: 0 });
     setError('');
     setMessage('');
     setUploadedItem(null);
     try {
-      const item = await api.uploadGalleryGroup(input, entries.map((entry) => entry.file), 0, csrfToken);
+      const item = await api.uploadGalleryGroup(input, entries.map((entry) => entry.file), 0, csrfToken, setUploadProgress);
       entries.forEach((entry) => {
         URL.revokeObjectURL(entry.previewUrl);
         previewUrlsRef.current.delete(entry.previewUrl);
@@ -175,7 +179,7 @@ export function AdvancedGalleryUploadPage() {
       setUploadedItem(item);
       setMessage(`已创建包含 ${item.images.length} 张图片的画廊展示单位。`);
     } catch (cause) {
-      setError((cause as Error).message);
+      setError((cause as Error).message); setUploadProgress(null);
     } finally {
       setUploading(false);
     }
@@ -246,7 +250,7 @@ export function AdvancedGalleryUploadPage() {
 
         <div className="advanced-upload-footer">
           <p>创建后可在画廊管理中继续调整封面、裁切焦点和展示顺序。</p>
-          <button className="button primary-button" disabled={uploading || !entries.length}>{uploading ? `正在上传 ${entries.length} 张图片…` : `创建多图展示（${entries.length} 张）`}</button>
+          <button className="button primary-button" disabled={uploading || !entries.length}>{uploading ? `正在上传 ${entries.length} 张图片…` : `创建多图展示（${entries.length} 张）`}</button><UploadProgressView progress={uploadProgress} label="高级图片上传进度" />
         </div>
       </section>
     </form>
