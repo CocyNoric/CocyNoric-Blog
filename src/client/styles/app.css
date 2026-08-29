@@ -633,16 +633,16 @@
 .metadata-category { grid-column: span 3; }
 .metadata-excerpt { grid-column: 1 / -1; }
 .span-2 { grid-column: span 2; }
-.editor-grid { height: min(72vh, 760px); min-height: 520px; display: grid; grid-template-columns: 1fr 1fr; margin-top: 18px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--radius-large); overflow: hidden; background: var(--md-sys-color-surface); }
+.editor-grid { height: min(72vh, 760px); min-height: 520px; display: grid; grid-template-columns: 1fr 1fr; margin-top: 18px; overflow: hidden; overflow-anchor: none; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--radius-large); background: var(--md-sys-color-surface); }
 .editor-pane, .preview-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .editor-pane { border-right: 1px solid var(--md-sys-color-outline-variant); }
-.pane-label { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 18px; color: var(--md-sys-color-on-surface-variant); background: var(--surface-container-low); font-size: .8rem; font-weight: 700; }
+.pane-label { flex: 0 0 44px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; overflow: hidden; padding: 0 18px; color: var(--md-sys-color-on-surface-variant); background: var(--surface-container-low); font-size: .8rem; font-weight: 700; }
 .editor-upload { position: relative; min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--md-sys-color-primary); cursor: pointer; }
 .editor-upload:hover { background: var(--md-sys-color-primary-container); }
 .editor-upload svg { width: 18px; height: 18px; }
-.editor-upload input { position: absolute; opacity: 0; pointer-events: none; }
-.editor-pane textarea { flex: 1; min-height: 0; width: 100%; overflow-y: auto; resize: none; padding: 22px; border: 0; outline: 0; color: var(--md-sys-color-on-surface); background: transparent; font-family: "Cascadia Code", Consolas, monospace; font-size: 14px; line-height: 1.7; }
-.preview-pane .markdown-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 28px; }
+.editor-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); opacity: 0; pointer-events: none; }
+.editor-pane textarea { flex: 1; min-height: 0; width: 100%; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; resize: none; padding: 22px; border: 0; outline: 0; color: var(--md-sys-color-on-surface); background: transparent; font-family: "Cascadia Code", Consolas, monospace; font-size: 14px; line-height: 1.7; }
+.preview-pane .markdown-body { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 22px 28px; }
 
 .settings-shell form { display: grid; padding-bottom: 108px; }
 .settings-shell .admin-heading { position: relative; min-height: 150px; align-items: center; margin-bottom: 22px; padding: 18px 4px 24px; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
