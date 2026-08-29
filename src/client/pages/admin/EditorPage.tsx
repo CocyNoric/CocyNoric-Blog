@@ -6,7 +6,7 @@ import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
 import { CategoryInput } from '../../components/CategoryInput.js';
 import { DateField } from '../../components/DateField.js';
-import { ImageIcon } from '../../components/Icons.js';
+import { ImageIcon, UploadIcon } from '../../components/Icons.js';
 import { SelectField } from '../../components/SelectField.js';
 import { validateImageFile } from '../../components/ImageDropField.js';
 import { useAuth } from '../../hooks/useAuth.js';
@@ -148,6 +148,7 @@ export function EditorPage() {
       </div>
       {(error || loadError) && <div className="message error-message" role="alert">{error || loadError}</div>}
       {message && <div className="message success-message" role="status" aria-live="polite">{message}</div>}
+      {imageProgress && <section className="editor-upload-progress-card" aria-label="文章图片上传状态"><span className="editor-upload-progress-icon"><UploadIcon /></span><UploadProgressView progress={imageProgress} label={uploadingImage ? '正在上传文章图片' : '文章图片上传完成'} /></section>}
       {loadState === 'loading' && <p className="loading-state">正在载入文章…</p>}
       {loadState === 'error' && <div className="empty-state"><h2>无法载入文章</h2><p>请重新载入后再编辑或保存。</p><button className="button secondary-button" type="button" onClick={() => setLoadAttempt((current) => current + 1)}>重新载入</button></div>}
       {ready && <>
@@ -166,7 +167,7 @@ export function EditorPage() {
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setImageDragActive(false); }}
           onDrop={dropImage}
-        ><div className="pane-label"><span>Markdown</span><span className="editor-upload-wrap"><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label><UploadProgressView progress={imageProgress} label="图片上传进度" /></span></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
+        ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
         <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: preview }} /></section>
       </div>
       </>}
