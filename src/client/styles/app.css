@@ -523,7 +523,7 @@
 .back-link svg { transform: rotate(180deg); }
 .article-surface { padding: clamp(26px, 6vw, 72px); border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 82%, transparent); border-radius: var(--radius-extra); background: var(--surface-context-reading); box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent); }
 .article-header { padding-bottom: 38px; margin-bottom: 38px; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
-.article-header h1 { margin: 18px 0; font-size: clamp(2.2rem, 6vw, 4.4rem); }
+.article-header h1 { margin: 18px 0; font-size: clamp(2.2rem, 6vw, 4.4rem); overflow-wrap: break-word; text-wrap: balance; }
 .article-header > p { max-width: 670px; color: var(--md-sys-color-on-surface-variant); font-size: 1.12rem; }
 .markdown-body { overflow-wrap: anywhere; }
 .markdown-body > *:first-child { margin-top: 0; }
