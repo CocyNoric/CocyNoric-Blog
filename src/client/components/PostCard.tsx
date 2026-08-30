@@ -25,7 +25,7 @@ export function PostCard({ post }: { post: PostSummary }) {
         {tags.length > 2 && <span className="post-tag post-tag-more" aria-label={`另有 ${tags.length - 2} 个标签`}>+{tags.length - 2}</span>}
       </div>
       <h3><Link to={`/posts/${post.slug}`}>{post.title}</Link></h3>
-      <div className="post-card-summary"><span className="showcase-info-label">Abstract</span><p>{post.excerpt || '打开文章阅读全文。'}</p></div>
+      <div className="post-card-summary"><span className="showcase-info-label">摘要</span><p>{post.excerpt || '打开文章阅读全文。'}</p></div>
       <div className="post-card-footer">
         <div className="post-meta"><CalendarIcon /><time dateTime={post.date}>{post.date}</time></div>
         <Link className="read-link" to={`/posts/${post.slug}`} aria-label={`阅读《${post.title}》`}>阅读文章<ArrowIcon /></Link>

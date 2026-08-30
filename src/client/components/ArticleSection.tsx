@@ -96,6 +96,6 @@ export function ArticleSection({ posts, galleryItems = [], galleryLoading = fals
             ? <div className="gallery-grid">{filteredGallery.map((item) => <GalleryCard item={item} key={item.id} />)}</div>
             : <div className="empty-state"><h3>没有找到相关画廊</h3><p>没有画廊展示匹配“{query.trim()}”。</p></div>}
     </div>}
-    {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>Read more<ArrowIcon /></Link></div>}
+    {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>查看更多文章<ArrowIcon /></Link></div>}
   </section>;
 }

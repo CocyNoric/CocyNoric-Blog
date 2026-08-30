@@ -16,7 +16,7 @@ export function ListingInfoRail({ kind, total, visible = total, context = '', ca
   const article = kind === 'article';
   return <div className="listing-info-rail-content">
     <div className="listing-rail-heading">
-      <span className="showcase-info-label">Overview</span>
+      <span className="showcase-info-label">概览</span>
       <h3>概览</h3>
     </div>
     <p className="listing-rail-summary">
@@ -25,7 +25,7 @@ export function ListingInfoRail({ kind, total, visible = total, context = '', ca
     </p>
     {context && <div className="listing-rail-context"><span>当前范围</span><strong>{context}</strong></div>}
     {categories.length > 0 && <div className="listing-rail-reserved">
-      <span className="showcase-info-label">{filterLabel === '标签' ? 'Tags' : 'Categories'}</span>
+      <span className="showcase-info-label">{filterLabel}</span>
       <strong>{filterLabel}</strong>
       <div className="listing-rail-categories" aria-label={`按${filterLabel}筛选`}>
         <button type="button" aria-pressed={!activeCategory} onClick={() => onCategoryChange?.('')}><span>全部</span><small>{total}</small></button>

@@ -22,7 +22,7 @@ export function ArticleShowcase({ posts, rail, railOpen }: { posts: PostSummary[
             <h3>{post.title}</h3>
             <div className="article-showcase-footer">
               <div className="article-showcase-summary">
-                <span className="showcase-info-label">Abstract</span>
+                <span className="showcase-info-label">摘要</span>
                 <p>{post.excerpt || '打开文章阅读全文。'}</p>
               </div>
               <div className="article-showcase-actions">
