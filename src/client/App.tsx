@@ -49,12 +49,27 @@ function PublicArticlesRoute() {
 
 function PublicLayout() {
   const { settings } = useSettings();
-  return <div className="site-layout">
+  const location = useLocation();
+  const workbench = location.pathname.startsWith('/admin');
+  const reading = location.pathname.startsWith('/posts/') || location.pathname.startsWith('/gallery/');
+  const listing = location.pathname === '/articles' || location.pathname === '/gallery' || location.pathname === '/repository';
+  const configuredBackgroundOpacity = 1 - settings.backgroundOverlay;
+  const backgroundBlur = Math.max(settings.backgroundBlur, workbench ? 2 : 0);
+  const backgroundOpacity = workbench
+    ? Math.min(configuredBackgroundOpacity, 0.18)
+    : reading
+      ? Math.min(configuredBackgroundOpacity, 0.34)
+      : listing
+        ? Math.min(configuredBackgroundOpacity, 0.42)
+        : configuredBackgroundOpacity;
+  const context = workbench ? 'workbench' : reading ? 'reading' : listing ? 'listing' : 'activity';
+
+  return <div className={`site-layout ${workbench ? 'site-layout-workbench' : 'site-layout-public'} site-layout-context-${context}`}>
     {settings.backgroundImage && <div className="site-background" style={{
       backgroundImage: `url(${settings.backgroundImage})`,
       backgroundPosition: settings.backgroundPosition,
-      filter: settings.backgroundBlur > 0 ? `blur(${settings.backgroundBlur}px)` : undefined,
-      opacity: 1 - settings.backgroundOverlay,
+      filter: backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : undefined,
+      opacity: backgroundOpacity,
     }} />}
     <a className="skip-link" href="#main">跳到主要内容</a><SiteHeader /><Outlet /><SiteFooter />
   </div>;

@@ -64,6 +64,6 @@ export function GallerySection({ items, loading, error = '', headingLevel = 'h2'
             ? <ListingRailStage rail={galleryRail} railOpen={railOpen} railLabel="画廊浏览信息">{galleryGrid}</ListingRailStage>
             : galleryGrid)
         : <div className="gallery-empty">{items.length > 0 ? '当前标签还没有画廊展示。' : '画廊还没有展示内容。'}</div>)}
-    {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>View more<ArrowIcon /></Link></div>}
+    {moreLink && <div className="section-more"><Link className="button secondary-button" to={moreLink}>查看更多画廊<ArrowIcon /></Link></div>}
   </section>;
 }

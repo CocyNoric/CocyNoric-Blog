@@ -33,6 +33,13 @@
   --surface-container: color-mix(in srgb, var(--md-sys-color-surface) 92%, var(--md-sys-color-primary) 8%);
   --surface-container-high: color-mix(in srgb, var(--md-sys-color-surface) 88%, var(--md-sys-color-primary) 12%);
   --surface-container-highest: color-mix(in srgb, var(--md-sys-color-surface) 84%, var(--md-sys-color-primary) 16%);
+  --surface-context-navigation: color-mix(in srgb, var(--md-sys-color-surface) 94%, transparent);
+  --surface-context-reading: color-mix(in srgb, var(--md-sys-color-surface) 98%, transparent);
+  --surface-workbench-lowest: color-mix(in srgb, var(--md-sys-color-surface) 100%, var(--md-sys-color-primary) 0%);
+  --surface-workbench-low: color-mix(in srgb, var(--md-sys-color-surface) 98%, var(--md-sys-color-primary) 2%);
+  --surface-workbench: color-mix(in srgb, var(--md-sys-color-surface) 96%, var(--md-sys-color-primary) 4%);
+  --surface-workbench-high: color-mix(in srgb, var(--md-sys-color-surface) 92%, var(--md-sys-color-primary) 8%);
+  --surface-workbench-highest: color-mix(in srgb, var(--md-sys-color-surface) 88%, var(--md-sys-color-primary) 12%);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
