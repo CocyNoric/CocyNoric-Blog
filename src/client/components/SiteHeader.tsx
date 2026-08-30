@@ -36,9 +36,9 @@ export function SiteHeader() {
           <span>{settings.siteName}</span>
         </Link>
         {!loading && hasNavigation && <nav className="main-nav" aria-label="主导航">
-          {visibility.articles && <Link to="/articles">文章</Link>}
-          {visibility.gallery && <Link to="/gallery">画廊</Link>}
-          {visibility.repository && <Link to="/repository">仓库</Link>}
+          {visibility.articles && <Link className={location.pathname.startsWith('/articles') || location.pathname.startsWith('/posts/') ? 'active' : undefined} to="/articles" aria-current={location.pathname.startsWith('/articles') || location.pathname.startsWith('/posts/') ? 'page' : undefined}>文章</Link>}
+          {visibility.gallery && <Link className={location.pathname.startsWith('/gallery') ? 'active' : undefined} to="/gallery" aria-current={location.pathname.startsWith('/gallery') ? 'page' : undefined}>画廊</Link>}
+          {visibility.repository && <Link className={location.pathname.startsWith('/repository') ? 'active' : undefined} to="/repository" aria-current={location.pathname.startsWith('/repository') ? 'page' : undefined}>仓库</Link>}
         </nav>}
       </div>
       <div className="header-actions">
