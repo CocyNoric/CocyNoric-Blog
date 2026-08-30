@@ -528,6 +528,18 @@ test('renders GFM and LaTeX without unsafe HTML', async () => {
   assert.doesNotMatch(html, /javascript:/i);
 });
 
+test('omits only a leading Markdown heading duplicated by the public page title', async () => {
+  const duplicate = await renderMarkdown('# **文章** 标题\n\n## 第一节\n\n正文。', { pageTitle: '文章 标题' });
+  assert.doesNotMatch(duplicate, /<h1>/);
+  assert.match(duplicate, /<h2>第一节<\/h2>/);
+
+  const distinct = await renderMarkdown('# 正文标题', { pageTitle: '页面标题' });
+  assert.match(distinct, /<h1>正文标题<\/h1>/);
+
+  const later = await renderMarkdown('引言。\n\n# 页面标题', { pageTitle: '页面标题' });
+  assert.match(later, /<h1>页面标题<\/h1>/);
+});
+
 test('stores only a password digest and verifies credentials', async () => {
   await saveAdminPassword('correct-horse-battery-staple');
   const stored = await readFile(dataStore.paths.admin, 'utf8');

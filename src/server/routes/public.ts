@@ -28,7 +28,7 @@ const renderedPostCache = new Map<string, { version: string; html: string }>();
 async function publicPost(post: AdminPost) {
   let rendered = renderedPostCache.get(post.id);
   if (!rendered || rendered.version !== post.version) {
-    rendered = { version: post.version, html: await renderMarkdown(post.markdown) };
+    rendered = { version: post.version, html: await renderMarkdown(post.markdown, { pageTitle: post.title }) };
     renderedPostCache.delete(post.id);
     renderedPostCache.set(post.id, rendered);
     if (renderedPostCache.size > 128) renderedPostCache.delete(renderedPostCache.keys().next().value!);
