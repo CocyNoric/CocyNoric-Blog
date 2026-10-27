@@ -1,4 +1,5 @@
 import type { MermaidConfig } from 'mermaid';
+import { createMermaidViewport } from './mermaidViewport.js';
 
 let renderQueue = Promise.resolve();
 let diagramSequence = 0;
@@ -53,6 +54,7 @@ function mountDiagram(pre: HTMLPreElement, code: HTMLElement) {
   viewport.setAttribute('role', 'region');
   viewport.tabIndex = 0;
   viewport.hidden = true;
+  const diagramView = createMermaidViewport(viewport);
   const toolbar = document.createElement('div');
   toolbar.className = 'mermaid-toolbar';
   const toggle = document.createElement('button');
@@ -64,7 +66,7 @@ function mountDiagram(pre: HTMLPreElement, code: HTMLElement) {
   sourcePanel.id = `${blockId}-source`;
   viewport.id = `${blockId}-view`;
   toggle.setAttribute('aria-controls', `${sourcePanel.id} ${viewport.id}`);
-  toolbar.append(toggle);
+  toolbar.append(toggle, diagramView.controls);
   pre.replaceWith(figure);
   sourcePanel.append(pre);
   figure.append(toolbar, status, viewport, sourcePanel);
@@ -77,9 +79,11 @@ function mountDiagram(pre: HTMLPreElement, code: HTMLElement) {
   const syncView = () => {
     sourcePanel.hidden = !showingSource;
     viewport.hidden = showingSource || !ready;
+    diagramView.controls.hidden = showingSource || !ready;
     toggle.textContent = showingSource ? '查看 Mermaid 图表' : '查看 Mermaid 源码';
     toggle.setAttribute('aria-pressed', String(showingSource));
     toggle.disabled = showingSource && !ready;
+    if (!viewport.hidden) diagramView.resize();
   };
   const toggleView = () => { showingSource = !showingSource; syncView(); };
   toggle.addEventListener('click', toggleView);
@@ -112,9 +116,7 @@ function mountDiagram(pre: HTMLPreElement, code: HTMLElement) {
           image.setAttribute('aria-label', 'Mermaid 图表，完整内容可查看源码');
         }
         viewport.hidden = false;
-        const width = image.viewBox.baseVal.width;
-        if (width > 0) image.style.width = `${Math.ceil(width)}px`;
-        image.style.maxWidth = 'none';
+        diagramView.setImage(image);
         ready = true;
         status.hidden = true;
         syncView();
@@ -140,6 +142,7 @@ function mountDiagram(pre: HTMLPreElement, code: HTMLElement) {
     dispose() {
       active = false;
       toggle.removeEventListener('click', toggleView);
+      diagramView.dispose();
       // Restore fences for StrictMode effect replay; detached old articles stay untouched.
       if (figure.isConnected) figure.replaceWith(pre);
     },
