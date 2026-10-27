@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import 'katex/dist/katex.min.css';
 import { Link, useParams } from 'react-router-dom';
 import type { GalleryItem } from '../../shared/schemas.js';
 import type { PostSummary, PublicPost } from '../../shared/types.js';
@@ -8,6 +7,7 @@ import { api } from '../api.js';
 import { ArrowIcon, CalendarIcon } from '../components/Icons.js';
 import { DetailPageLayout } from '../components/DetailPageLayout.js';
 import { InformationBar } from '../components/InformationBar.js';
+import { MarkdownContent } from '../components/MarkdownContent.js';
 import { useSettings } from '../hooks/useSettings.js';
 
 export function PostPage() {
@@ -51,7 +51,7 @@ export function PostPage() {
           <h1>{post.title}</h1>
           {post.excerpt && <p>{post.excerpt}</p>}
         </header>
-        <div className="markdown-body" dangerouslySetInnerHTML={{ __html: post.html }} />
+        <MarkdownContent html={post.html} />
       </article>
     </DetailPageLayout>
   </main>;

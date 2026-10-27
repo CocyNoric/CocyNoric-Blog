@@ -1,11 +1,11 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from 'react';
-import 'katex/dist/katex.min.css';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PostInput } from '../../../shared/schemas.js';
 import { api } from '../../api.js';
 import { AdminNav } from '../../components/AdminNav.js';
 import { CategoryInput } from '../../components/CategoryInput.js';
 import { DateField } from '../../components/DateField.js';
+import { MarkdownContent } from '../../components/MarkdownContent.js';
 import { ImageIcon, UploadIcon } from '../../components/Icons.js';
 import { SelectField } from '../../components/SelectField.js';
 import { validateImageFile } from '../../components/ImageDropField.js';
@@ -168,7 +168,7 @@ export function EditorPage() {
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setImageDragActive(false); }}
           onDrop={dropImage}
         ><div className="pane-label"><span>Markdown</span><label className="editor-upload"><ImageIcon />{uploadingImage ? '正在上传…' : !id ? '保存后可插入图片' : '插入或拖入图片'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploadingImage || !id} onChange={(event) => { void uploadImage(event.target.files?.[0]); event.target.value = ''; }} /></label></div><label className="visually-hidden" htmlFor="markdown-editor">Markdown 正文</label><textarea id="markdown-editor" value={post.markdown} onChange={(event) => update('markdown', event.target.value)} spellCheck="false" /></section>
-        <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><div className="markdown-body" dangerouslySetInnerHTML={{ __html: preview }} /></section>
+        <section className="preview-pane" aria-labelledby="preview-title"><div className="pane-label" id="preview-title">实时预览</div><MarkdownContent html={preview} /></section>
       </div>
       </>}
     </form>
