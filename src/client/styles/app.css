@@ -539,6 +539,30 @@
 .markdown-body img { border-radius: var(--radius-medium); }
 .markdown-body table { width: 100%; border-collapse: collapse; }
 .markdown-body th, .markdown-body td { padding: 10px 12px; border-bottom: 1px solid var(--md-sys-color-outline-variant); text-align: left; }
+.mermaid-diagram { min-width: 0; max-width: 100%; margin: var(--space-5) 0; overflow: hidden; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--radius-medium); background: var(--md-sys-color-surface); }
+.mermaid-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: var(--space-1); border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.mermaid-controls:not([hidden]) { flex: 0 0 auto; display: flex; align-items: center; margin-left: auto; }
+.mermaid-view-button { width: 44px; height: 44px; display: grid; place-items: center; padding: var(--space-2); border-radius: var(--radius-small); color: var(--md-sys-color-primary); background: transparent; cursor: pointer; }
+.mermaid-view-button > svg { width: 18px; height: 18px; }
+.mermaid-view-button:hover:not(:disabled) { background: var(--surface-container-low); }
+.mermaid-view-button:active:not(:disabled) { background: var(--surface-container); }
+.mermaid-view-button:disabled { color: var(--md-sys-color-on-surface-variant); opacity: .5; cursor: default; }
+.mermaid-source-toggle { min-width: 0; min-height: 44px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-small); color: var(--md-sys-color-primary); background: transparent; font-size: .875rem; line-height: 1.35; text-align: left; cursor: pointer; }
+.mermaid-source-toggle:hover:not(:disabled) { background: var(--surface-container-low); }
+.mermaid-source-toggle:active:not(:disabled), .mermaid-source-toggle[aria-pressed='true'] { background: var(--surface-container); }
+.mermaid-source-toggle:disabled { color: var(--md-sys-color-on-surface-variant); cursor: default; }
+/* Bound the canvas so tall/zoomed graphs can be explored without expanding the article. */
+.mermaid-viewport { position: relative; min-height: min(200px, 70vh); max-height: 70vh; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.mermaid-viewport.is-dragging { cursor: grabbing; }
+.mermaid-viewport > svg { position: absolute; top: 0; left: 0; display: block; transform-origin: 0 0; }
+.mermaid-viewport:focus-visible { outline-offset: -3px; }
+.mermaid-source-toggle:focus-visible, .mermaid-view-button:focus-visible { outline-offset: -3px; }
+.markdown-body .mermaid-diagram pre { margin: 0; border-radius: 0; }
+.markdown-body .mermaid-status { margin: 0; padding: var(--space-4); }
+.markdown-body .mermaid-status[data-error] { color: var(--md-sys-color-error); }
+.mermaid-staging { position: fixed; top: 0; left: -100000px; width: 1200px; visibility: hidden; pointer-events: none; }
+/* Measure final geometry under reduced motion too; article diagrams remain static. */
+.mermaid-staging *, .mermaid-diagram svg, .mermaid-diagram svg * { transition: none !important; animation: none !important; }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }
 
 .auth-shell { display: grid; place-items: center; padding-block: 64px; }
